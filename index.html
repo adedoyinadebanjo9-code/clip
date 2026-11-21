@@ -62,7 +62,18 @@ footer{color:var(--mute);font-size:.85rem;margin-top:20px}
 <header>
   <h1>Clipwise</h1>
   <p class="tag">Pick a moment from your video's transcript and export it as a vertical clip with captions. Your video stays on your device.</p>
+  <div class="row"><button class="ghost" id="cfgB0" type="button" aria-expanded="false">AI settings</button><span class="note" id="cstate" style="margin:0"></span></div>
 </header>
+  <div class="cfg" id="cfg" hidden style="margin:0 0 14px">
+    <label>How should Clipwise reach the AI?
+      <select id="cmode"><option value="key">Use my own Gemini API key (this device only)</option><option value="proxy">Use a Supabase function</option></select>
+    </label>
+    <div id="cKey"><label>Gemini API key<input type="password" id="ckey" autocomplete="off"></label>
+      <p class="note">Stored in this browser and sent only to Google. Anyone using this device can read it, so do not use this option on a shared computer.</p></div>
+    <div id="cProxy" hidden><label>Function URL<input type="url" id="curl" placeholder="https://PROJECT.supabase.co/functions/v1/suggest-clips"></label>
+      <label>Supabase anon key<input type="text" id="canon" autocomplete="off"></label></div>
+    <div><button id="cSave" type="button">Save settings</button></div>
+  </div>
 
 <section id="s1">
   <h2>Choose a video</h2>
@@ -76,6 +87,11 @@ footer{color:var(--mute);font-size:.85rem;margin-top:20px}
 <section id="s2" hidden>
   <h2>Transcribe</h2>
   <video id="vid" controls playsinline></video>
+  <div class="cfg" id="conv" hidden style="margin-top:12px">
+    <p class="note" id="convMsg" style="margin:0"></p>
+    <div><button id="convB" type="button">Convert for this browser</button></div>
+    <div class="bar" id="cbarw" hidden><i id="cbar"></i></div>
+  </div>
   <div class="row" style="margin-top:12px">
     <label>Model
       <select id="model">
@@ -94,16 +110,6 @@ footer{color:var(--mute);font-size:.85rem;margin-top:20px}
   <div class="row">
     <button id="goS">Suggest clips</button>
     <button class="ghost" id="cfgB" type="button" aria-expanded="false">Connection settings</button>
-  </div>
-  <div class="cfg" id="cfg" hidden>
-    <label>How should Clipwise reach the AI?
-      <select id="cmode"><option value="key">Use my own Gemini API key (this device only)</option><option value="proxy">Use a Supabase function</option></select>
-    </label>
-    <div id="cKey"><label>Gemini API key<input type="password" id="ckey" autocomplete="off"></label>
-      <p class="note">Stored in this browser and sent only to Google. Anyone using this device can read it, so do not use this option on a shared computer.</p></div>
-    <div id="cProxy" hidden><label>Function URL<input type="url" id="curl" placeholder="https://PROJECT.supabase.co/functions/v1/suggest-clips"></label>
-      <label>Supabase anon key<input type="text" id="canon" autocomplete="off"></label></div>
-    <div><button id="cSave" type="button">Save settings</button></div>
   </div>
   <div class="status" id="sstatus" role="status"></div>
   <div id="cards"></div>
@@ -162,15 +168,67 @@ function loadFile(f){
   if(!f)return;
   if(!/^video\//.test(f.type)&&!/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)){msg($("s1status"),"That file is not a video. Choose an MP4, MOV or WebM file.",true);return}
   if(f.size>MAX_BYTES){msg($("s1status"),"This file is "+Math.round(f.size/1048576)+" MB. The limit is 500 MB. Trim it or export a lower resolution first.",true);return}
+  attach(f);
+}
+function needConv(t){
+  $("convMsg").textContent=t+" You can convert it to a compatible MP4 here. It runs on your device and can take a few minutes.";
+  $("conv").hidden=false;msg($("tstatus"),"");
+}
+function attach(f){
   if(url)URL.revokeObjectURL(url);
+  $("conv").hidden=true;
   file=f;url=URL.createObjectURL(f);vid.src=url;
   words=[];selA=selB=-1;$("s3").hidden=true;$("s4").hidden=true;$("result").hidden=true;
   $("s2").hidden=false;msg($("s1status"),f.name+" ("+Math.round(f.size/1048576)+" MB) loaded.");msg($("tstatus"),"");
-  vid.onerror=function(){msg($("tstatus"),"Your browser cannot play this video format. Convert it to H.264 MP4 and try again.",true)};
+  vid.onerror=function(){needConv("This browser cannot play this video format. iPhone videos are often HEVC, which many Windows browsers cannot decode.")};
+  vid.onloadedmetadata=function(){if(vid.videoWidth===0)needConv("This browser can read the sound but cannot decode the picture. This is common with iPhone HEVC video.")};
 }
 $("file").addEventListener("change",function(e){loadFile(e.target.files[0])});
 ["dragover","dragenter"].forEach(function(n){$("drop").addEventListener(n,function(e){e.preventDefault();$("drop").classList.add("over")})});
 ["dragleave","drop"].forEach(function(n){$("drop").addEventListener(n,function(e){e.preventDefault();$("drop").classList.remove("over");if(n==="drop")loadFile(e.dataTransfer.files[0])})});
+
+/* ---------- compatibility conversion (ffmpeg.wasm, loaded only when needed) ---------- */
+var ff=null,converting=false;
+function loadScript(src){return new Promise(function(res,rej){var s=document.createElement("script");s.src=src;s.onload=res;s.onerror=function(){rej(new Error("Could not load the converter from the CDN."))};document.head.appendChild(s)})}
+async function getFF(){
+  if(ff)return ff;
+  var B="https://cdn.jsdelivr.net/npm/";
+  await loadScript(B+"@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js");
+  await loadScript(B+"@ffmpeg/util@0.12.1/dist/umd/index.js");
+  var core=B+"@ffmpeg/core@0.12.6/dist/umd/",U=window.FFmpegUtil,f=new window.FFmpegWASM.FFmpeg();
+  await f.load({
+    coreURL:await U.toBlobURL(core+"ffmpeg-core.js","text/javascript"),
+    wasmURL:await U.toBlobURL(core+"ffmpeg-core.wasm","application/wasm"),
+    classWorkerURL:await U.toBlobURL(B+"@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js","text/javascript")
+  });
+  ff=f;return f;
+}
+$("convB").addEventListener("click",async function(){
+  if(converting||!file)return;
+  converting=true;$("convB").disabled=true;$("cbarw").hidden=false;$("cbar").style.width="0";
+  var src=file,f=null,onP=null;
+  msg($("tstatus"),"Loading the converter (about 30 MB, downloaded once)...");
+  try{
+    f=await getFF();
+    onP=function(e){var p=Math.max(0,Math.min(1,e.progress||0));$("cbar").style.width=(p*100).toFixed(0)+"%";msg($("tstatus"),"Converting... "+(p*100).toFixed(0)+"%. Keep this tab open.")};
+    f.on("progress",onP);
+    msg($("tstatus"),"Converting... 0%. Keep this tab open.");
+    await f.writeFile("in.mov",new Uint8Array(await src.arrayBuffer()));
+    var code=await f.exec(["-i","in.mov","-vf","scale=-2:'min(720,ih)'","-c:v","libx264","-preset","ultrafast","-crf","28","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart","out.mp4"]);
+    if(code!==0)throw new Error("The converter could not process this file.");
+    var data=await f.readFile("out.mp4");
+    var out=new File([data],src.name.replace(/\.[^.]+$/,"")+"-compatible.mp4",{type:"video/mp4"});
+    try{await f.deleteFile("in.mov");await f.deleteFile("out.mp4")}catch(e){}
+    attach(out);
+    msg($("s1status"),out.name+" ("+Math.round(out.size/1048576)+" MB) ready.");
+    msg($("tstatus"),"Converted to a compatible MP4. You can transcribe now.");
+  }catch(e){
+    msg($("tstatus"),"Conversion failed: "+(e&&e.message||"unknown error")+" Try a shorter video, or on your iPhone use Settings > Camera > Formats > Most Compatible and record again.",true);
+  }finally{
+    if(f&&onP)f.off("progress",onP);
+    converting=false;$("convB").disabled=false;$("cbarw").hidden=true;
+  }
+});
 
 /* ---------- 2. transcribe (worker keeps the page responsive) ---------- */
 var WORKER_SRC=[
@@ -204,7 +262,7 @@ $("goT").addEventListener("click",async function(){
   msg($("tstatus"),"Reading audio from the video...");
   var audio;
   try{audio=await getAudio(file)}
-  catch(e){msg($("tstatus"),"Could not read the audio track. The video may have no audio or use an unsupported codec. Try an H.264 MP4.",true);busy=false;$("goT").disabled=false;$("tbarw").hidden=true;return}
+  catch(e){needConv("The audio track could not be read.");msg($("tstatus"),"Could not read the audio track. The video may have no audio or use an unsupported codec. Try an H.264 MP4.",true);busy=false;$("goT").disabled=false;$("tbarw").hidden=true;return}
   if(audio.length<16000){msg($("tstatus"),"The audio is shorter than one second. Choose a longer video.",true);busy=false;$("goT").disabled=false;$("tbarw").hidden=true;return}
   if(worker)worker.terminate();
   try{worker=new Worker(URL.createObjectURL(new Blob([WORKER_SRC],{type:"text/javascript"})),{type:"module"})}
@@ -298,11 +356,13 @@ function saveCfg(c){try{localStorage.setItem(CFGK,JSON.stringify(c));return true
 function showMode(){var p=$("cmode").value==="proxy";$("cKey").hidden=p;$("cProxy").hidden=!p}
 (function(){var c=loadCfg();$("cmode").value=c.mode||"key";$("ckey").value=c.key||"";$("curl").value=c.url||"";$("canon").value=c.anon||"";showMode()})();
 $("cmode").addEventListener("change",showMode);
-$("cfgB").addEventListener("click",function(){var h=$("cfg").hidden;$("cfg").hidden=!h;$("cfgB").setAttribute("aria-expanded",String(h))});
+function toggleCfg(){var h=$("cfg").hidden;$("cfg").hidden=!h;$("cfgB0").setAttribute("aria-expanded",String(h));if(h)$("cfg").scrollIntoView({behavior:"smooth",block:"nearest"})}
+$("cfgB0").addEventListener("click",toggleCfg);$("cfgB").addEventListener("click",toggleCfg);
+function cState(){var c=loadCfg(),ok=c.mode==="proxy"?(c.url&&c.anon):c.key;$("cstate").textContent=ok?"AI settings saved on this device ("+(c.mode==="proxy"?"Supabase function":"your Gemini key")+").":"AI not set up yet. Open AI settings."}
+cState();
 $("cSave").addEventListener("click",function(){
   var ok=saveCfg({mode:$("cmode").value,key:$("ckey").value.trim(),url:$("curl").value.trim(),anon:$("canon").value.trim()});
-  msg($("sstatus"),ok?"Settings saved.":"Could not save settings. Your browser may be blocking storage.",!ok);
-  if(ok)$("cfg").hidden=true;
+  if(ok){$("cfg").hidden=true;cState()}else $("cstate").textContent="Could not save settings. Your browser may be blocking storage.";
 });
 function transcriptText(){
   var lines=[],cur=[],t0=0;
