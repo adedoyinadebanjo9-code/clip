@@ -188,7 +188,7 @@ $("file").addEventListener("change",function(e){loadFile(e.target.files[0])});
 ["dragleave","drop"].forEach(function(n){$("drop").addEventListener(n,function(e){e.preventDefault();$("drop").classList.remove("over");if(n==="drop")loadFile(e.dataTransfer.files[0])})});
 
 /* ---------- compatibility conversion (ffmpeg.wasm, loaded only when needed) ---------- */
-var ff=null,converting=false;
+var ff=null,converting=false,ffLog=[];
 function loadScript(src){return new Promise(function(res,rej){var s=document.createElement("script");s.src=src;s.onload=res;s.onerror=function(){rej(new Error("Could not load the converter from the CDN."))};document.head.appendChild(s)})}
 async function getFF(){
   if(ff)return ff;
@@ -201,19 +201,21 @@ async function getFF(){
     wasmURL:await U.toBlobURL(core+"ffmpeg-core.wasm","application/wasm"),
     classWorkerURL:await U.toBlobURL(B+"@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js","text/javascript")
   });
+  f.on("log",function(e){ffLog.push(String(e.message||""));if(ffLog.length>4)ffLog.shift()});
   ff=f;return f;
 }
 $("convB").addEventListener("click",async function(){
   if(converting||!file)return;
   converting=true;$("convB").disabled=true;$("cbarw").hidden=false;$("cbar").style.width="0";
-  var src=file,f=null,onP=null;
+  var src=file,f=null,onP=null,stage="loading the converter";ffLog=[];
   msg($("tstatus"),"Loading the converter (about 30 MB, downloaded once)...");
   try{
     f=await getFF();
     onP=function(e){var p=Math.max(0,Math.min(1,e.progress||0));$("cbar").style.width=(p*100).toFixed(0)+"%";msg($("tstatus"),"Converting... "+(p*100).toFixed(0)+"%. Keep this tab open.")};
-    f.on("progress",onP);
+    f.on("progress",onP);stage="reading the file";
     msg($("tstatus"),"Converting... 0%. Keep this tab open.");
     await f.writeFile("in.mov",new Uint8Array(await src.arrayBuffer()));
+    stage="converting";
     var code=await f.exec(["-i","in.mov","-vf","scale=-2:'min(720,ih)'","-c:v","libx264","-preset","ultrafast","-crf","28","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart","out.mp4"]);
     if(code!==0)throw new Error("The converter could not process this file.");
     var data=await f.readFile("out.mp4");
@@ -223,7 +225,8 @@ $("convB").addEventListener("click",async function(){
     msg($("s1status"),out.name+" ("+Math.round(out.size/1048576)+" MB) ready.");
     msg($("tstatus"),"Converted to a compatible MP4. You can transcribe now.");
   }catch(e){
-    msg($("tstatus"),"Conversion failed: "+(e&&e.message||"unknown error")+" Try a shorter video, or on your iPhone use Settings > Camera > Formats > Most Compatible and record again.",true);
+    var why=(e&&e.message)||(typeof e==="string"?e:"")||(ffLog.length?ffLog.join(" | "):"no details");
+    msg($("tstatus"),"Conversion failed while "+stage+": "+why+". Try a shorter video, or on your iPhone use Settings > Camera > Formats > Most Compatible and record again.",true);
   }finally{
     if(f&&onP)f.off("progress",onP);
     converting=false;$("convB").disabled=false;$("cbarw").hidden=true;
@@ -245,14 +248,23 @@ var WORKER_SRC=[
 "};"
 ].join("\n");
 
+function decodeWith(ctx,buf){return new Promise(function(res,rej){var p=ctx.decodeAudioData(buf,res,rej);if(p&&p.catch)p.catch(rej)})}
 async function getAudio(f){
-  var buf=await f.arrayBuffer();
-  var AC=window.AudioContext||window.webkitAudioContext;
-  var ac=new AC({sampleRate:16000});
-  var dec=await ac.decodeAudioData(buf);
-  ac.close&&ac.close();
-  var n=dec.length,ch=dec.numberOfChannels,out=new Float32Array(n);
-  for(var c=0;c<ch;c++){var d=dec.getChannelData(c);for(var i=0;i<n;i++)out[i]+=d[i]/ch}
+  var raw=await f.arrayBuffer();
+  var AC=window.AudioContext||window.webkitAudioContext,OAC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+  var makers=[];if(AC)makers.push(function(){return new AC()});if(OAC)makers.push(function(){return new OAC(1,1,44100)});
+  var dec=null,last=null;
+  for(var k=0;k<makers.length&&!dec;k++){
+    var ctx=null;
+    try{ctx=makers[k]();dec=await decodeWith(ctx,raw.slice(0))}catch(e){last=e;dec=null}
+    try{ctx&&ctx.close&&ctx.close()}catch(e){}
+  }
+  if(!dec)throw new Error(last?((last.name?last.name+": ":"")+(last.message||"decode failed")):"no audio decoder available");
+  var n=dec.length,ch=dec.numberOfChannels,sr=dec.sampleRate,mono=new Float32Array(n);
+  for(var c=0;c<ch;c++){var d=dec.getChannelData(c);for(var i=0;i<n;i++)mono[i]+=d[i]/ch}
+  if(sr===16000)return mono;
+  var ratio=sr/16000,m=Math.floor(n/ratio),out=new Float32Array(m);
+  for(var j=0;j<m;j++){var a=Math.floor(j*ratio),b=Math.max(a+1,Math.min(n,Math.floor((j+1)*ratio))),s=0;for(var q=a;q<b;q++)s+=mono[q];out[j]=s/(b-a)}
   return out;
 }
 
@@ -262,7 +274,7 @@ $("goT").addEventListener("click",async function(){
   msg($("tstatus"),"Reading audio from the video...");
   var audio;
   try{audio=await getAudio(file)}
-  catch(e){needConv("The audio track could not be read.");msg($("tstatus"),"Could not read the audio track. The video may have no audio or use an unsupported codec. Try an H.264 MP4.",true);busy=false;$("goT").disabled=false;$("tbarw").hidden=true;return}
+  catch(e){needConv("This browser could not decode the audio. Converting may help, but it is slow and can fail on phones.");msg($("tstatus"),"Could not read the audio track ("+(e&&e.message||e)+"). The video may have no sound, or this browser cannot decode it.",true);busy=false;$("goT").disabled=false;$("tbarw").hidden=true;return}
   if(audio.length<16000){msg($("tstatus"),"The audio is shorter than one second. Choose a longer video.",true);busy=false;$("goT").disabled=false;$("tbarw").hidden=true;return}
   if(worker)worker.terminate();
   try{worker=new Worker(URL.createObjectURL(new Blob([WORKER_SRC],{type:"text/javascript"})),{type:"module"})}
