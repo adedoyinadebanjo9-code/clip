@@ -358,7 +358,7 @@ $("prev").addEventListener("click",function(){
 });
 
 /* ---------- Phase 2: AI clip suggestions ---------- */
-var CFGK="clipwise.cfg",GEM_MODEL="gemini-2.5-flash",MAX_CHARS=60000,sbusy=false;
+var CFGK="clipwise.cfg",GEM_MODEL="gemini-3.8-flash",MAX_CHARS=60000,sbusy=false;
 var PROMPT="You choose short-form video clips from a transcript. Each line starts with its start time in seconds in square brackets. "+
 "Return 3 to 6 clips, each 20 to 60 seconds long, that make sense on their own: open on a strong hook, cover one complete idea or story beat, and end at a natural stop. "+
 "Use start and end times in seconds taken from the transcript timestamps. Clips must not overlap. "+
@@ -408,7 +408,7 @@ async function askModel(text,dur){
   if(!c.key)throw new Error("Add your Gemini API key in connection settings.");
   r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+GEM_MODEL+":generateContent",{method:"POST",
     headers:{"Content-Type":"application/json","x-goog-api-key":c.key},
-    body:JSON.stringify({contents:[{parts:[{text:PROMPT+"\nVideo length: "+Math.round(dur)+" seconds.\n\nTranscript:\n"+text}]}],generationConfig:{responseMimeType:"application/json",responseSchema:SCHEMA,temperature:0.4}})});
+    body:JSON.stringify({contents:[{parts:[{text:PROMPT+"\nVideo length: "+Math.round(dur)+" seconds.\n\nTranscript:\n"+text}]}],generationConfig:{responseMimeType:"application/json",responseSchema:SCHEMA}})});
   if(!r.ok)throw new Error(r.status===429?"Free quota reached. Wait a minute or try again tomorrow.":(r.status===400||r.status===403)?"Google rejected the request. Check that the API key is correct and the model name is still available.":"Google returned error "+r.status+".");
   var j=await r.json(),p=j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts;
   if(!p||!p[0])throw new Error("The model returned nothing. Try again.");

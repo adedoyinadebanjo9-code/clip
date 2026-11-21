@@ -2,7 +2,7 @@
 // Secrets to set: GEMINI_API_KEY (required), ALLOWED_ORIGIN (your site origin, no path), GEMINI_MODEL (optional)
 
 const KEY = Deno.env.get("GEMINI_API_KEY");
-const MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-2.5-flash";
+const MODEL = Deno.env.get("GEMINI_MODEL") ?? "gemini-3.8-flash";
 const ORIGIN = Deno.env.get("ALLOWED_ORIGIN") ?? "*";
 const MAX_CHARS = 60000;
 const LIMIT = 6;          // requests per IP per window (best effort, resets when the instance restarts)
@@ -60,7 +60,7 @@ Deno.serve(async (req) => {
       headers: { "Content-Type": "application/json", "x-goog-api-key": KEY },
       body: JSON.stringify({
         contents: [{ parts: [{ text: `${PROMPT}\nVideo length: ${Math.round(duration)} seconds.\n\nTranscript:\n${transcript}` }] }],
-        generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA, temperature: 0.4 },
+        generationConfig: { responseMimeType: "application/json", responseSchema: SCHEMA },
       }),
     },
   );
