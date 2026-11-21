@@ -49,7 +49,8 @@ video{width:100%;max-height:360px;background:#000;border-radius:4px;display:bloc
 .script span.in{background:var(--mark);color:#141a18}
 .tc{font-family:var(--mono);font-size:.95rem}
 label{font-size:.9rem;color:var(--mute);display:flex;flex-direction:column;gap:4px}
-.out{display:grid;grid-template-columns:minmax(0,260px) 1fr;gap:16px;align-items:start}
+.out{display:block;max-width:360px}
+.out[hidden]{display:none}
 @media (max-width:600px){.out{grid-template-columns:1fr}}
 canvas{width:100%;max-width:260px;aspect-ratio:9/16;background:#000;border-radius:4px;display:block}
 .note{font-size:.88rem;color:var(--mute);margin:8px 0 0}
@@ -72,7 +73,7 @@ footer{color:var(--mute);font-size:.85rem;margin-top:20px}
       <p class="note">Stored in this browser and sent only to Google. Anyone using this device can read it, so do not use this option on a shared computer.</p></div>
     <div id="cProxy" hidden><label>Function URL<input type="url" id="curl" placeholder="https://PROJECT.supabase.co/functions/v1/suggest-clips"></label>
       <label>Supabase anon key<input type="text" id="canon" autocomplete="off"></label></div>
-    <div><button id="cSave" type="button">Save settings</button></div>
+    <div class="row"><button id="cSave" type="button">Save settings</button><button class="ghost" id="cTest" type="button">Test connection</button></div>
   </div>
 
 <section id="s1">
@@ -140,7 +141,6 @@ footer{color:var(--mute);font-size:.85rem;margin-top:20px}
   <div class="bar" id="ebarw" hidden><i id="ebar"></i></div>
   <div class="status" id="estatus" role="status"></div>
   <div class="out" id="result" hidden>
-    <canvas id="cv" width="720" height="1280"></canvas>
     <div>
       <video id="outv" controls playsinline style="max-height:420px"></video>
       <p style="margin:12px 0 0"><a class="dl" id="dl" download="clip">Download clip</a></p>
@@ -310,6 +310,7 @@ $("goT").addEventListener("click",async function(){
     if(!words.length){msg($("tstatus"),"No speech was detected. Check that the video has clear spoken audio.",true);return}
     msg($("tstatus"),"Done. "+words.length+" words transcribed.");
     buildScript();$("s3").hidden=false;$("s4").hidden=false;
+    msg($("sstatus"),"Transcript ready. Tap Suggest clips for AI ideas, or choose a clip manually below.");
     $("s3").scrollIntoView({behavior:"smooth",block:"start"});
   }
 });
@@ -375,6 +376,17 @@ cState();
 $("cSave").addEventListener("click",function(){
   var ok=saveCfg({mode:$("cmode").value,key:$("ckey").value.trim(),url:$("curl").value.trim(),anon:$("canon").value.trim()});
   if(ok){$("cfg").hidden=true;cState()}else $("cstate").textContent="Could not save settings. Your browser may be blocking storage.";
+});
+$("cTest").addEventListener("click",async function(){
+  saveCfg({mode:$("cmode").value,key:$("ckey").value.trim(),url:$("curl").value.trim(),anon:$("canon").value.trim()});
+  $("cstate").textContent="Testing the connection...";
+  var sample="[0.0] Today I want to share three habits that changed how I work.\n[6.0] First, I write down the one task that matters before I open my phone.\n[13.0] Second, I work in focused blocks and then take a real break.\n[20.0] Third, I review my day in five minutes every evening.\n[27.0] These small habits added up to a calmer and more productive year.";
+  try{
+    var r=await askModel(sample,35);
+    $("cstate").textContent=(r&&r.clips)?"Connection works. The AI replied with "+r.clips.length+" clip idea(s).":"The service answered, but the reply was not in the expected format.";
+  }catch(e){
+    $("cstate").textContent="Test failed: "+((e&&e.name==="TypeError")?"could not reach the service. Check the function URL and the ALLOWED_ORIGIN secret.":(e&&e.message)||"unknown error");
+  }
 });
 function transcriptText(){
   var lines=[],cur=[],t0=0;
@@ -442,12 +454,12 @@ $("goS").addEventListener("click",async function(){
   sbusy=true;$("goS").disabled=true;$("cards").textContent="";msg($("sstatus"),"Asking the model for clip ideas...");
   try{
     var raw;
-    try{raw=await askModel(text,dur)}catch(e){if(e instanceof SyntaxError)raw=await askModel(text,dur);else throw e}
+    try{raw=await askModel(text,dur)}catch(e){if((e&&e.name==="SyntaxError"))raw=await askModel(text,dur);else throw e}
     var list=cleanClips(raw);
     if(!list.length)msg($("sstatus"),"The model returned no usable clips. Try again, or choose a clip manually below.",true);
     else{renderCards(list);msg($("sstatus"),list.length+" suggestions. The rating is the model's opinion, not a view-count prediction. Review each one before exporting.")}
   }catch(e){
-    msg($("sstatus"),e instanceof TypeError?"Could not reach the service. Check your connection and the URL in connection settings.":e instanceof SyntaxError?"The model returned invalid data twice. Try again.":(e&&e.message)||"Request failed.",true);
+    msg($("sstatus"),(e&&e.name==="TypeError")?"Could not reach the service. Check your connection and the URL in connection settings.":(e&&e.name==="SyntaxError")?"The model returned invalid data twice. Try again.":(e&&e.message)||"Request failed.",true);
   }finally{sbusy=false;$("goS").disabled=false}
 });
 
