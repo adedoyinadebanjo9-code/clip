@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipwise | Cut vertical clips from long videos</title>
+<meta name="description" content="Upload a video, pick a moment from the transcript, and export a vertical clip with captions. Runs in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b6e66'/%3E%3Crect x='9' y='6' width='14' height='20' rx='2' fill='none' stroke='%23fff' stroke-width='2.4'/%3E%3Cpath d='M14 12l6 4-6 4z' fill='%23ffd84a'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#dfe3e0;--panel:#f4f5f2;--ink:#141a18;--mute:#5b6561;--line:#c3c9c5;--accent:#0b6e66;--accent-ink:#fff;--mark:#ffd84a;--err:#a3281c;
+--font:"Avenir Next","Segoe UI","Helvetica Neue",Roboto,Arial,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#101413;--panel:#181e1c;--ink:#e9ece9;--mute:#97a39e;--line:#2b3430;--accent:#3fb8ac;--accent-ink:#06201d;--mark:#ffd84a;--err:#ff8a7a}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--font)}
+main{max-width:920px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+h1{font-size:1.5rem;margin:0;letter-spacing:-.01em}
+.tag{color:var(--mute);font-size:.9rem;max-width:46ch}
+section{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;margin-bottom:14px}
+section[hidden]{display:none}
+h2{font-size:1.05rem;margin:0 0 10px}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:4px;padding:10px 16px;cursor:pointer;font-weight:600;min-height:44px}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--mark);outline-offset:2px}
+select,input[type=number]{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:9px;min-height:44px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.drop{display:block;border:2px dashed var(--line);border-radius:6px;padding:26px 14px;text-align:center;cursor:pointer}
+.drop:hover,.drop.over{border-color:var(--accent)}
+.drop input{position:absolute;opacity:0;width:1px;height:1px}
+.drop:focus-within{outline:3px solid var(--mark)}
+video{width:100%;max-height:360px;background:#000;border-radius:4px;display:block}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:10px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.status{color:var(--mute);font-size:.92rem;margin-top:8px;min-height:1.4em}
+.status.err{color:var(--err);font-weight:600}
+.script{max-height:300px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:12px;line-height:2;font-size:1.02rem}
+.script span{cursor:pointer;padding:3px 1px;border-radius:2px}
+.script span:hover{text-decoration:underline}
+.script span.in{background:var(--mark);color:#141a18}
+.tc{font-family:var(--mono);font-size:.95rem}
+label{font-size:.9rem;color:var(--mute);display:flex;flex-direction:column;gap:4px}
+.out{display:grid;grid-template-columns:minmax(0,260px) 1fr;gap:16px;align-items:start}
+@media (max-width:600px){.out{grid-template-columns:1fr}}
+canvas{width:100%;max-width:260px;aspect-ratio:9/16;background:#000;border-radius:4px;display:block}
+.note{font-size:.88rem;color:var(--mute);margin:8px 0 0}
+a.dl{display:inline-block;background:var(--accent);color:var(--accent-ink);text-decoration:none;padding:11px 16px;border-radius:4px;font-weight:600}
+footer{color:var(--mute);font-size:.85rem;margin-top:20px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Clipwise</h1>
+  <p class="tag">Pick a moment from your video's transcript and export it as a vertical clip with captions. Your video stays on your device.</p>
+</header>
+
+<section id="s1">
+  <h2>Choose a video</h2>
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept="video/*">
+    <strong>Select a video file</strong><br><span class="note">MP4, MOV or WebM. Up to 500 MB. Best on a desktop browser.</span>
+  </label>
+  <div class="status" id="s1status" role="status"></div>
+</section>
+
+<section id="s2" hidden>
+  <h2>Transcribe</h2>
+  <video id="vid" controls playsinline></video>
+  <div class="row" style="margin-top:12px">
+    <label>Model
+      <select id="model">
+        <option value="Xenova/whisper-tiny.en">Fast (tiny, English)</option>
+        <option value="Xenova/whisper-base.en">More accurate (base, English)</option>
+      </select>
+    </label>
+    <button id="goT" style="align-self:flex-end">Transcribe</button>
+  </div>
+  <div class="bar" id="tbarw" hidden><i id="tbar"></i></div>
+  <div class="status" id="tstatus" role="status"></div>
+</section>
+
+<section id="s3" hidden>
+  <h2>Select your clip</h2>
+  <p class="note" style="margin:0 0 8px">Tap a word to set the start, then tap another word to set the end.</p>
+  <div class="script" id="script"></div>
+  <div class="row" style="margin-top:12px">
+    <label>Start (s)<input type="number" id="st" step="0.1" min="0"></label>
+    <label>End (s)<input type="number" id="en" step="0.1" min="0"></label>
+    <span class="tc" id="len" style="align-self:flex-end;padding-bottom:12px"></span>
+    <button class="ghost" id="prev" style="align-self:flex-end">Preview clip</button>
+  </div>
+  <div class="status" id="selstatus"></div>
+</section>
+
+<section id="s4" hidden>
+  <h2>Export</h2>
+  <div class="row">
+    <label>Framing
+      <select id="fit"><option value="crop">Center crop</option><option value="fit">Fit with black bars</option></select>
+    </label>
+    <label>Captions
+      <select id="caps"><option value="1">On</option><option value="0">Off</option></select>
+    </label>
+    <button id="goE" style="align-self:flex-end">Export clip</button>
+    <button class="ghost" id="stopE" style="align-self:flex-end" hidden>Cancel</button>
+  </div>
+  <p class="note">Export plays the clip in real time while recording it, so a 45 second clip takes about 45 seconds. Keep this tab open and visible until it finishes.</p>
+  <div class="bar" id="ebarw" hidden><i id="ebar"></i></div>
+  <div class="status" id="estatus" role="status"></div>
+  <div class="out" id="result" hidden>
+    <canvas id="cv" width="720" height="1280"></canvas>
+    <div>
+      <video id="outv" controls playsinline style="max-height:420px"></video>
+      <p style="margin:12px 0 0"><a class="dl" id="dl" download="clip">Download clip</a></p>
+    </div>
+  </div>
+  <canvas id="work" width="720" height="1280" hidden></canvas>
+</section>
+
+<footer>Phase 1. The speech model is downloaded once from a public CDN and cached by your browser. Nothing you upload is sent to a server.</footer>
+</main>
+
+<script>
+(function(){
+"use strict";
+var $=function(id){return document.getElementById(id)};
+var MAX_BYTES=500*1024*1024, MAX_CLIP=90;
+var file=null, url=null, words=[], selA=-1, selB=-1, worker=null, busy=false, cancel=false;
+var vid=$("vid");
+
+function tc(t){t=Math.max(0,t||0);var m=Math.floor(t/60),s=(t%60).toFixed(1);return m+":"+(s<10?"0":"")+s}
+function msg(el,t,err){el.textContent=t;el.className="status"+(err?" err":"")}
+
+/* ---------- 1. load file ---------- */
+function loadFile(f){
+  if(!f)return;
+  if(!/^video\//.test(f.type)&&!/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)){msg($("s1status"),"That file is not a video. Choose an MP4, MOV or WebM file.",true);return}
+  if(f.size>MAX_BYTES){msg($("s1status"),"This file is "+Math.round(f.size/1048576)+" MB. The limit is 500 MB. Trim it or export a lower resolution first.",true);return}
+  if(url)URL.revokeObjectURL(url);
+  file=f;url=URL.createObjectURL(f);vid.src=url;
+  words=[];selA=selB=-1;$("s3").hidden=true;$("s4").hidden=true;$("result").hidden=true;
+  $("s2").hidden=false;msg($("s1status"),f.name+" ("+Math.round(f.size/1048576)+" MB) loaded.");msg($("tstatus"),"");
+  vid.onerror=function(){msg($("tstatus"),"Your browser cannot play this video format. Convert it to H.264 MP4 and try again.",true)};
+}
+$("file").addEventListener("change",function(e){loadFile(e.target.files[0])});
+["dragover","dragenter"].forEach(function(n){$("drop").addEventListener(n,function(e){e.preventDefault();$("drop").classList.add("over")})});
+["dragleave","drop"].forEach(function(n){$("drop").addEventListener(n,function(e){e.preventDefault();$("drop").classList.remove("over");if(n==="drop")loadFile(e.dataTransfer.files[0])})});
+
+/* ---------- 2. transcribe (worker keeps the page responsive) ---------- */
+var WORKER_SRC=[
+"import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1';",
+"var asr=null,loaded=null;",
+"self.onmessage=async function(e){",
+" var d=e.data;",
+" try{",
+"  if(loaded!==d.model){asr=await pipeline('automatic-speech-recognition',d.model,{progress_callback:function(p){self.postMessage({t:'dl',p:p})}});loaded=d.model}",
+"  self.postMessage({t:'run'});",
+"  var out=await asr(d.audio,{return_timestamps:'word',chunk_length_s:30,stride_length_s:5});",
+"  self.postMessage({t:'done',chunks:out.chunks||[]});",
+" }catch(err){self.postMessage({t:'err',m:String(err&&err.message||err)})}",
+"};"
+].join("\n");
+
+async function getAudio(f){
+  var buf=await f.arrayBuffer();
+  var AC=window.AudioContext||window.webkitAudioContext;
+  var ac=new AC({sampleRate:16000});
+  var dec=await ac.decodeAudioData(buf);
+  ac.close&&ac.close();
+  var n=dec.length,ch=dec.numberOfChannels,out=new Float32Array(n);
+  for(var c=0;c<ch;c++){var d=dec.getChannelData(c);for(var i=0;i<n;i++)out[i]+=d[i]/ch}
+  return out;
+}
+
+$("goT").addEventListener("click",async function(){
+  if(busy||!file)return;
+  busy=true;$("goT").disabled=true;$("tbarw").hidden=false;$("tbar").style.width="0";
+  msg($("tstatus"),"Reading audio from the video...");
+  var audio;
+  try{audio=await getAudio(file)}
+  catch(e){msg($("tstatus"),"Could not read the audio track. The video may have no audio or use an unsupported codec. Try an H.264 MP4.",true);busy=false;$("goT").disabled=false;$("tbarw").hidden=true;return}
+  if(audio.length<16000){msg($("tstatus"),"The audio is shorter than one second. Choose a longer video.",true);busy=false;$("goT").disabled=false;$("tbarw").hidden=true;return}
+  if(worker)worker.terminate();
+  try{worker=new Worker(URL.createObjectURL(new Blob([WORKER_SRC],{type:"text/javascript"})),{type:"module"})}
+  catch(e){msg($("tstatus"),"This browser does not support module workers. Use a recent Chrome, Edge or Safari.",true);busy=false;$("goT").disabled=false;return}
+  var t0=0,tick=null,mins=Math.round(audio.length/16000/60*10)/10;
+  worker.onmessage=function(ev){
+    var m=ev.data;
+    if(m.t==="dl"){
+      var p=m.p;
+      if(p.status==="progress"&&typeof p.progress==="number"){$("tbar").style.width=p.progress.toFixed(0)+"%";msg($("tstatus"),"Downloading speech model: "+p.progress.toFixed(0)+"%")}
+    }else if(m.t==="run"){
+      $("tbar").style.width="100%";t0=Date.now();
+      tick=setInterval(function(){msg($("tstatus"),"Transcribing "+mins+" min of audio... "+Math.round((Date.now()-t0)/1000)+"s elapsed")},500);
+    }else if(m.t==="done"){
+      clearInterval(tick);finishT(m.chunks);
+    }else if(m.t==="err"){
+      clearInterval(tick);msg($("tstatus"),"Transcription failed: "+m.m+" Check your connection (the model downloads on first use) and try again.",true);reset();
+    }
+  };
+  worker.onerror=function(){clearInterval(tick);msg($("tstatus"),"The transcription worker crashed. Try the Fast model or a shorter video.",true);reset()};
+  msg($("tstatus"),"Loading speech model...");
+  worker.postMessage({audio:audio,model:$("model").value},[audio.buffer]);
+  function reset(){busy=false;$("goT").disabled=false;$("tbarw").hidden=true}
+  function finishT(chunks){
+    words=[];
+    chunks.forEach(function(c){
+      var w=(c.text||"").trim();if(!w)return;
+      var s=c.timestamp&&c.timestamp[0]!=null?c.timestamp[0]:null;if(s==null)return;
+      var e=c.timestamp[1]!=null?c.timestamp[1]:s+0.4;
+      words.push({w:w,s:s,e:e});
+    });
+    reset();
+    if(!words.length){msg($("tstatus"),"No speech was detected. Check that the video has clear spoken audio.",true);return}
+    msg($("tstatus"),"Done. "+words.length+" words transcribed.");
+    buildScript();$("s3").hidden=false;$("s4").hidden=false;
+    $("s3").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+});
+
+/* ---------- 3. select clip ---------- */
+function buildScript(){
+  var box=$("script");box.textContent="";
+  var frag=document.createDocumentFragment();
+  words.forEach(function(w,i){
+    var sp=document.createElement("span");sp.textContent=w.w;sp.dataset.i=i;sp.tabIndex=0;sp.setAttribute("role","button");
+    frag.appendChild(sp);frag.appendChild(document.createTextNode(" "));
+  });
+  box.appendChild(frag);selA=selB=-1;paint();
+}
+function pick(i){
+  if(selA<0||selB>=0){selA=i;selB=-1}
+  else{if(i<selA){selB=selA;selA=i}else selB=i}
+  if(selB<0)$("st").value=words[selA].s.toFixed(1);
+  else{$("st").value=words[selA].s.toFixed(1);$("en").value=words[selB].e.toFixed(1)}
+  paint();
+}
+$("script").addEventListener("click",function(e){var i=e.target.dataset&&e.target.dataset.i;if(i!=null)pick(+i)});
+$("script").addEventListener("keydown",function(e){if((e.key==="Enter"||e.key===" ")&&e.target.dataset&&e.target.dataset.i!=null){e.preventDefault();pick(+e.target.dataset.i)}});
+function paint(){
+  var sp=$("script").children;
+  for(var i=0;i<sp.length;i++){var on=selA>=0&&i>=selA&&i<=(selB<0?selA:selB);sp[i].classList.toggle("in",on)}
+  check();
+}
+function range(){return [parseFloat($("st").value),parseFloat($("en").value)]}
+function check(){
+  var r=range(),a=r[0],b=r[1],ok=false;
+  if(isNaN(a)||isNaN(b)){msg($("selstatus"),"Select a start and end word, or type the times.");}
+  else if(b<=a){msg($("selstatus"),"The end must come after the start.",true)}
+  else if(b-a>MAX_CLIP){msg($("selstatus"),"Clips are limited to "+MAX_CLIP+" seconds. Shorten the range.",true)}
+  else{msg($("selstatus"),"");ok=true}
+  $("len").textContent=ok?"Length "+tc(b-a):"";
+  $("goE").disabled=!ok||busy;$("prev").disabled=!ok;
+  return ok;
+}
+$("st").addEventListener("input",check);$("en").addEventListener("input",check);
+$("prev").addEventListener("click",function(){
+  if(!check())return;var r=range();vid.currentTime=r[0];vid.play();
+  var h=function(){if(vid.currentTime>=r[1]){vid.pause();vid.removeEventListener("timeupdate",h)}};vid.addEventListener("timeupdate",h);
+});
+
+/* ---------- 4. export: canvas + MediaRecorder ---------- */
+function pickMime(){
+  var c=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
+  for(var i=0;i<c.length;i++){if(window.MediaRecorder&&MediaRecorder.isTypeSupported(c[i]))return c[i]}
+  return "";
+}
+function drawCaps(ctx,W,H,t,list){
+  var idx=-1;for(var i=0;i<list.length;i++){if(list[i].s<=t)idx=i;else break}
+  if(idx<0||t>list[idx].e+0.8)return;
+  var g=Math.floor(idx/3)*3,grp=list.slice(g,g+3);
+  var size=Math.round(W*0.085);ctx.font="800 "+size+"px "+getComputedStyle(document.body).fontFamily;
+  var sp=ctx.measureText(" ").width,tot=-sp;
+  grp.forEach(function(w){tot+=ctx.measureText(w.w).width+sp});
+  if(tot>W*0.9){size=Math.floor(size*W*0.9/tot);ctx.font="800 "+size+"px "+getComputedStyle(document.body).fontFamily;
+    sp=ctx.measureText(" ").width;tot=-sp;grp.forEach(function(w){tot+=ctx.measureText(w.w).width+sp})}
+  var x=(W-tot)/2,y=H*0.74;
+  ctx.textBaseline="middle";ctx.lineJoin="round";ctx.lineWidth=Math.max(6,size*0.16);ctx.strokeStyle="#000";
+  grp.forEach(function(w,k){
+    var cur=(g+k)===idx;
+    ctx.strokeText(w.w,x,y);ctx.fillStyle=cur?"#ffd84a":"#fff";ctx.fillText(w.w,x,y);
+    x+=ctx.measureText(w.w).width+sp;
+  });
+}
+$("goE").addEventListener("click",async function(){
+  if(busy||!check())return;
+  var mime=pickMime();
+  if(!mime){msg($("estatus"),"This browser cannot record video. Use a recent Chrome, Edge or Safari on desktop.",true);return}
+  var r=range(),a=r[0],b=r[1],fit=$("fit").value==="fit",caps=$("caps").value==="1";
+  var list=words.filter(function(w){return w.e>a&&w.s<b});
+  var cv=$("work"),ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
+  var v=document.createElement("video");v.src=url;v.playsInline=true;v.preload="auto";
+  busy=true;cancel=false;$("goE").disabled=true;$("stopE").hidden=false;$("ebarw").hidden=false;$("ebar").style.width="0";$("result").hidden=true;
+  msg($("estatus"),"Preparing...");
+  var ac,rec,chunks=[],done=false;
+  function end(ok,text,err){
+    if(done)return;done=true;
+    try{v.pause()}catch(e){}
+    try{ac&&ac.close()}catch(e){}
+    busy=false;$("stopE").hidden=true;$("ebarw").hidden=true;check();
+    msg($("estatus"),text,err);
+  }
+  try{
+    await new Promise(function(res,rej){v.onloadedmetadata=res;v.onerror=function(){rej(new Error("load"))}});
+    var AC=window.AudioContext||window.webkitAudioContext;ac=new AC();
+    if(ac.state==="suspended")await ac.resume();
+    var dest=ac.createMediaStreamDestination();ac.createMediaElementSource(v).connect(dest);
+    var stream=new MediaStream(cv.captureStream(30).getVideoTracks().concat(dest.stream.getAudioTracks()));
+    rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:4000000});
+    rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data)};
+    rec.onstop=function(){
+      if(cancel){end(false,"Export cancelled.");return}
+      var blob=new Blob(chunks,{type:mime.split(";")[0]});
+      if(!blob.size){end(false,"The export produced an empty file. Try again with the tab in the foreground.",true);return}
+      var u=URL.createObjectURL(blob),ext=/mp4/.test(mime)?"mp4":"webm";
+      $("outv").src=u;$("dl").href=u;$("dl").download="clip-"+tc(a).replace(":","m")+"."+ext;
+      $("result").hidden=false;end(true,"Done. "+(blob.size/1048576).toFixed(1)+" MB "+ext.toUpperCase()+".");
+      $("result").scrollIntoView({behavior:"smooth",block:"nearest"});
+    };
+    await new Promise(function(res){v.onseeked=res;v.currentTime=Math.max(a,0.001)});
+    rec.start(250);await v.play();
+    msg($("estatus"),"Recording clip...");
+    var vw=v.videoWidth,vh=v.videoHeight;
+    (function frame(){
+      if(done)return;
+      var t=v.currentTime;
+      if(cancel||t>=b||v.ended){if(rec.state!=="inactive")rec.stop();return}
+      ctx.fillStyle="#000";ctx.fillRect(0,0,W,H);
+      if(fit){var h=W*vh/vw;ctx.drawImage(v,0,(H-h)/2,W,h)}
+      else{var sw=vh*9/16,sx=(vw-sw)/2;ctx.drawImage(v,sx,0,sw,vh,0,0,W,H)}
+      if(caps)drawCaps(ctx,W,H,t,list);
+      $("ebar").style.width=Math.min(100,(t-a)/(b-a)*100).toFixed(0)+"%";
+      requestAnimationFrame(frame);
+    })();
+  }catch(e){
+    end(false,"Export failed: "+(e&&e.message==="load"?"the video could not be loaded for export.":(e&&e.message||"unknown error"))+" Try a shorter clip or an H.264 MP4.",true);
+  }
+});
+$("stopE").addEventListener("click",function(){cancel=true});
+document.addEventListener("visibilitychange",function(){if(document.hidden&&busy)msg($("estatus"),"Keep this tab visible. Recording slows down in the background.",true)});
+})();
+</script>
+</body>
+</html>
