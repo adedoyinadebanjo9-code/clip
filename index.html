@@ -36,7 +36,14 @@ video{width:100%;max-height:360px;background:#000;border-radius:4px;display:bloc
 .bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
 .status{color:var(--mute);font-size:.92rem;margin-top:8px;min-height:1.4em}
 .status.err{color:var(--err);font-weight:600}
-.script{max-height:300px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:12px;line-height:2;font-size:1.02rem}
+.card{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px;padding:12px;margin-top:10px;background:var(--bg)}
+.card h3{font-size:1rem;margin:0 0 4px}
+.card p{margin:4px 0 10px;color:var(--mute);font-size:.92rem}
+.card .meta{display:flex;gap:12px;flex-wrap:wrap;font-size:.9rem;margin-bottom:4px}
+.cfg{border:1px solid var(--line);border-radius:4px;padding:12px;margin-top:10px;display:grid;gap:10px}
+.cfg input[type=text],.cfg input[type=password],.cfg input[type=url]{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:9px;min-height:44px;width:100%}
+.cfg[hidden],.cfg div[hidden]{display:none}
+.script{position:relative;max-height:300px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:12px;line-height:2;font-size:1.02rem}
 .script span{cursor:pointer;padding:3px 1px;border-radius:2px}
 .script span:hover{text-decoration:underline}
 .script span.in{background:var(--mark);color:#141a18}
@@ -84,7 +91,23 @@ footer{color:var(--mute);font-size:.85rem;margin-top:20px}
 
 <section id="s3" hidden>
   <h2>Select your clip</h2>
-  <p class="note" style="margin:0 0 8px">Tap a word to set the start, then tap another word to set the end.</p>
+  <div class="row">
+    <button id="goS">Suggest clips</button>
+    <button class="ghost" id="cfgB" type="button" aria-expanded="false">Connection settings</button>
+  </div>
+  <div class="cfg" id="cfg" hidden>
+    <label>How should Clipwise reach the AI?
+      <select id="cmode"><option value="key">Use my own Gemini API key (this device only)</option><option value="proxy">Use a Supabase function</option></select>
+    </label>
+    <div id="cKey"><label>Gemini API key<input type="password" id="ckey" autocomplete="off"></label>
+      <p class="note">Stored in this browser and sent only to Google. Anyone using this device can read it, so do not use this option on a shared computer.</p></div>
+    <div id="cProxy" hidden><label>Function URL<input type="url" id="curl" placeholder="https://PROJECT.supabase.co/functions/v1/suggest-clips"></label>
+      <label>Supabase anon key<input type="text" id="canon" autocomplete="off"></label></div>
+    <div><button id="cSave" type="button">Save settings</button></div>
+  </div>
+  <div class="status" id="sstatus" role="status"></div>
+  <div id="cards"></div>
+  <p class="note" style="margin:14px 0 8px">Or choose manually. Tap a word to set the start, then tap another word to set the end.</p>
   <div class="script" id="script"></div>
   <div class="row" style="margin-top:12px">
     <label>Start (s)<input type="number" id="st" step="0.1" min="0"></label>
@@ -120,7 +143,7 @@ footer{color:var(--mute);font-size:.85rem;margin-top:20px}
   <canvas id="work" width="720" height="1280" hidden></canvas>
 </section>
 
-<footer>Phase 1. The speech model is downloaded once from a public CDN and cached by your browser. Nothing you upload is sent to a server.</footer>
+<footer>Your video file never leaves your device, and transcription runs in your browser. The speech model is downloaded once from a public CDN. When you tap Suggest clips, the transcript text (not the video) is sent to Google's Gemini API, directly or through your Supabase function.</footer>
 </main>
 
 <script>
@@ -230,6 +253,7 @@ function buildScript(){
     frag.appendChild(sp);frag.appendChild(document.createTextNode(" "));
   });
   box.appendChild(frag);selA=selB=-1;paint();
+  $("cards").textContent="";msg($("sstatus"),"");
 }
 function pick(i){
   if(selA<0||selB>=0){selA=i;selB=-1}
@@ -260,6 +284,99 @@ $("st").addEventListener("input",check);$("en").addEventListener("input",check);
 $("prev").addEventListener("click",function(){
   if(!check())return;var r=range();vid.currentTime=r[0];vid.play();
   var h=function(){if(vid.currentTime>=r[1]){vid.pause();vid.removeEventListener("timeupdate",h)}};vid.addEventListener("timeupdate",h);
+});
+
+/* ---------- Phase 2: AI clip suggestions ---------- */
+var CFGK="clipwise.cfg",GEM_MODEL="gemini-2.5-flash",MAX_CHARS=60000,sbusy=false;
+var PROMPT="You choose short-form video clips from a transcript. Each line starts with its start time in seconds in square brackets. "+
+"Return 3 to 6 clips, each 20 to 60 seconds long, that make sense on their own: open on a strong hook, cover one complete idea or story beat, and end at a natural stop. "+
+"Use start and end times in seconds taken from the transcript timestamps. Clips must not overlap. "+
+"score is 0 to 100 for how well the clip should hold attention. title is a plain hook headline under 60 characters. reason is one sentence on why the clip works.";
+var SCHEMA={type:"OBJECT",properties:{clips:{type:"ARRAY",items:{type:"OBJECT",properties:{start:{type:"NUMBER"},end:{type:"NUMBER"},title:{type:"STRING"},score:{type:"NUMBER"},reason:{type:"STRING"}},required:["start","end","title","score","reason"]}}},required:["clips"]};
+function loadCfg(){try{return JSON.parse(localStorage.getItem(CFGK))||{}}catch(e){return {}}}
+function saveCfg(c){try{localStorage.setItem(CFGK,JSON.stringify(c));return true}catch(e){return false}}
+function showMode(){var p=$("cmode").value==="proxy";$("cKey").hidden=p;$("cProxy").hidden=!p}
+(function(){var c=loadCfg();$("cmode").value=c.mode||"key";$("ckey").value=c.key||"";$("curl").value=c.url||"";$("canon").value=c.anon||"";showMode()})();
+$("cmode").addEventListener("change",showMode);
+$("cfgB").addEventListener("click",function(){var h=$("cfg").hidden;$("cfg").hidden=!h;$("cfgB").setAttribute("aria-expanded",String(h))});
+$("cSave").addEventListener("click",function(){
+  var ok=saveCfg({mode:$("cmode").value,key:$("ckey").value.trim(),url:$("curl").value.trim(),anon:$("canon").value.trim()});
+  msg($("sstatus"),ok?"Settings saved.":"Could not save settings. Your browser may be blocking storage.",!ok);
+  if(ok)$("cfg").hidden=true;
+});
+function transcriptText(){
+  var lines=[],cur=[],t0=0;
+  words.forEach(function(w,i){
+    if(!cur.length)t0=w.s;cur.push(w.w);
+    var endS=/[.?!]$/.test(w.w)&&cur.length>=6;
+    if(cur.length>=14||endS||i===words.length-1){lines.push("["+t0.toFixed(1)+"] "+cur.join(" "));cur=[]}
+  });
+  return lines.join("\n");
+}
+async function askModel(text,dur){
+  var c=loadCfg(),r;
+  if(c.mode==="proxy"){
+    if(!c.url)throw new Error("Add your function URL in connection settings.");
+    r=await fetch(c.url,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+(c.anon||""),"apikey":c.anon||""},body:JSON.stringify({transcript:text,duration:dur})});
+    if(!r.ok)throw new Error(r.status===429?"Too many requests. Wait a minute and try again.":"The function returned error "+r.status+". Check its logs in Supabase.");
+    return await r.json();
+  }
+  if(!c.key)throw new Error("Add your Gemini API key in connection settings.");
+  r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+GEM_MODEL+":generateContent",{method:"POST",
+    headers:{"Content-Type":"application/json","x-goog-api-key":c.key},
+    body:JSON.stringify({contents:[{parts:[{text:PROMPT+"\nVideo length: "+Math.round(dur)+" seconds.\n\nTranscript:\n"+text}]}],generationConfig:{responseMimeType:"application/json",responseSchema:SCHEMA,temperature:0.4}})});
+  if(!r.ok)throw new Error(r.status===429?"Free quota reached. Wait a minute or try again tomorrow.":(r.status===400||r.status===403)?"Google rejected the request. Check that the API key is correct and the model name is still available.":"Google returned error "+r.status+".");
+  var j=await r.json(),p=j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts;
+  if(!p||!p[0])throw new Error("The model returned nothing. Try again.");
+  return JSON.parse(p[0].text);
+}
+function nearest(t,key){var bi=0,bd=1e9;for(var i=0;i<words.length;i++){var d=Math.abs(words[i][key]-t);if(d<bd){bd=d;bi=i}}return bi}
+function cleanClips(raw){
+  var out=[];
+  ((raw&&raw.clips)||[]).forEach(function(c){
+    var s=+c.start,e=+c.end;if(!isFinite(s)||!isFinite(e))return;
+    var ia=nearest(s,"s"),ib=nearest(e,"e");if(ib<=ia)return;
+    var a=words[ia].s,b=words[ib].e,len=b-a;if(len<10||len>MAX_CLIP)return;
+    out.push({ia:ia,ib:ib,a:a,b:b,title:String(c.title||"Untitled").slice(0,80),score:Math.max(0,Math.min(100,Math.round(+c.score||0))),reason:String(c.reason||"").slice(0,220)});
+  });
+  out.sort(function(x,y){return y.score-x.score});
+  var keep=[];
+  out.forEach(function(c){
+    var dup=keep.some(function(k){return Math.min(k.b,c.b)-Math.max(k.a,c.a)>0.5*Math.min(k.b-k.a,c.b-c.a)});
+    if(!dup)keep.push(c);
+  });
+  return keep;
+}
+function setSel(ia,ib){
+  selA=ia;selB=ib;$("st").value=words[ia].s.toFixed(1);$("en").value=words[ib].e.toFixed(1);paint();
+  var box=$("script"),el=box.children[ia];if(el)box.scrollTop=Math.max(0,el.offsetTop-40);
+}
+function renderCards(list){
+  var box=$("cards");box.textContent="";
+  list.forEach(function(c){
+    var d=document.createElement("div");d.className="card";
+    var h=document.createElement("h3");h.textContent=c.title;
+    var m=document.createElement("div");m.className="meta tc";m.textContent=tc(c.a)+" to "+tc(c.b)+"  |  "+Math.round(c.b-c.a)+" s  |  Model rating "+c.score+"/100";
+    var p=document.createElement("p");p.textContent=c.reason;
+    var b=document.createElement("button");b.className="ghost";b.type="button";b.textContent="Use this clip";
+    b.addEventListener("click",function(){setSel(c.ia,c.ib);$("s4").scrollIntoView({behavior:"smooth",block:"nearest"})});
+    d.appendChild(h);d.appendChild(m);d.appendChild(p);d.appendChild(b);box.appendChild(d);
+  });
+}
+$("goS").addEventListener("click",async function(){
+  if(sbusy||!words.length)return;
+  var text=transcriptText(),dur=vid.duration||words[words.length-1].e;
+  if(text.length>MAX_CHARS){msg($("sstatus"),"This transcript is too long for one request (limit about 60,000 characters, roughly an hour of speech). Pick a clip manually or use a shorter video.",true);return}
+  sbusy=true;$("goS").disabled=true;$("cards").textContent="";msg($("sstatus"),"Asking the model for clip ideas...");
+  try{
+    var raw;
+    try{raw=await askModel(text,dur)}catch(e){if(e instanceof SyntaxError)raw=await askModel(text,dur);else throw e}
+    var list=cleanClips(raw);
+    if(!list.length)msg($("sstatus"),"The model returned no usable clips. Try again, or choose a clip manually below.",true);
+    else{renderCards(list);msg($("sstatus"),list.length+" suggestions. The rating is the model's opinion, not a view-count prediction. Review each one before exporting.")}
+  }catch(e){
+    msg($("sstatus"),e instanceof TypeError?"Could not reach the service. Check your connection and the URL in connection settings.":e instanceof SyntaxError?"The model returned invalid data twice. Try again.":(e&&e.message)||"Request failed.",true);
+  }finally{sbusy=false;$("goS").disabled=false}
 });
 
 /* ---------- 4. export: canvas + MediaRecorder ---------- */
