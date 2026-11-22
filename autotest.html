@@ -571,10 +571,14 @@ $("prev").addEventListener("click",function(){
 
 /* ---------- Phase 2: AI clip suggestions ---------- */
 var CFGK="clipwise.cfg",GEM_MODEL="gemini-3.8-flash",MAX_CHARS=60000,sbusy=false;
-var PROMPT="You choose short-form video clips from a transcript. Each line starts with its start time in seconds in square brackets. "+
-"Return 3 to 6 clips, each 20 to 60 seconds long, that make sense on their own: open on a strong hook, cover one complete idea or story beat, and end at a natural stop. "+
-"Use start and end times in seconds taken from the transcript timestamps. Clips must not overlap. "+
-"score is 0 to 100 for how well the clip should hold attention. title is a plain hook headline under 60 characters. reason is one sentence on why the clip works.";
+var PROMPT="You are an expert short-form video editor who picks clips for TikTok, Reels and Shorts. Each transcript line starts with its start time in seconds in square brackets. "+
+"Return 3 to 6 clips, each 20 to 45 seconds long (never longer than 60) that make sense on their own with no extra context. "+
+"HOOK: the first 3 seconds decide whether people keep watching, so start each clip on a bold claim, a surprising fact, a question, a conflict, or the start of a story that creates curiosity. Never start on filler such as so, um, okay, welcome back or thanks for watching, and prefer to start at the beginning of a sentence. "+
+"WATCH TIME: no slow lead-in; put the payoff or answer inside the clip; cover one complete idea or story beat; end right after the payoff at a natural stop. "+
+"Prefer moments with emotion, surprise, tension, humor, a strong opinion or a useful tip; skip small talk, ads, housekeeping and repeated points. "+
+"Use start and end times in seconds taken from the transcript timestamps and inside the video length given. Clips must not overlap. "+
+"title is the on-screen hook headline: under 60 characters, specific, true to what the clip delivers, with no clickbait the clip does not pay off. "+
+"score is 0 to 100 for how strong the opening hook is and how well the clip should hold attention; be honest and spread the scores out. reason is one sentence on why the clip works.";
 var SCHEMA={type:"OBJECT",properties:{clips:{type:"ARRAY",items:{type:"OBJECT",properties:{start:{type:"NUMBER"},end:{type:"NUMBER"},title:{type:"STRING"},score:{type:"NUMBER"},reason:{type:"STRING"}},required:["start","end","title","score","reason"]}}},required:["clips"]};
 function loadCfg(){try{return JSON.parse(localStorage.getItem(CFGK))||{}}catch(e){return {}}}
 function saveCfg(c){try{localStorage.setItem(CFGK,JSON.stringify(c));return true}catch(e){return false}}

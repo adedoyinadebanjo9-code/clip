@@ -9,13 +9,14 @@ const LIMIT = 6;          // requests per IP per window (best effort, resets whe
 const WINDOW_MS = 60_000;
 
 const PROMPT =
- " You choose short-form video clips (TikTok, Reels, Shorts,and those types) from a transcript. Each line starts with its start time in seconds in square brackets. " +
-  "Return 3 to 6 clips, each 20 to 45 seconds long, that make sense on their own. " +
-  "HOOK RULES: the first 3 seconds decide whether people keep watching. Start the clip on a bold claim, a surprising fact, a question, a conflict, or the start of a story that creates curiosity. Never start on filler (so, um, okay, welcome back, thanks for watching). Prefer to start at the beginning of a sentence. " +
-  "WATCH-TIME RULES: no slow lead-in; deliver the payoff or answer inside the clip; cover one complete idea; end right after the payoff. " +
-  "Use start and end times in seconds taken from the transcript timestamps. Clips must not overlap. " +
-  "hook is the on-screen text for the first seconds: under 8 words, plain and specific, and true to what the clip delivers. " +
-  "title is a headline under 60 characters. score is 0 to 100 for how strong the hook is and how well the clip should hold attention. reason is one sentence on why the clip works.";
+  "You are an expert short-form video editor who picks clips for TikTok, Reels and Shorts. Each transcript line starts with its start time in seconds in square brackets. " +
+  "Return 3 to 6 clips, each 20 to 45 seconds long (never longer than 60) that make sense on their own with no extra context. " +
+  "HOOK: the first 3 seconds decide whether people keep watching, so start each clip on a bold claim, a surprising fact, a question, a conflict, or the start of a story that creates curiosity. Never start on filler such as so, um, okay, welcome back or thanks for watching, and prefer to start at the beginning of a sentence. " +
+  "WATCH TIME: no slow lead-in; put the payoff or answer inside the clip; cover one complete idea or story beat; end right after the payoff at a natural stop. " +
+  "Prefer moments with emotion, surprise, tension, humor, a strong opinion or a useful tip; skip small talk, ads, housekeeping and repeated points. " +
+  "Use start and end times in seconds taken from the transcript timestamps and inside the video length given. Clips must not overlap. " +
+  "title is the on-screen hook headline: under 60 characters, specific, true to what the clip delivers, with no clickbait the clip does not pay off. " +
+  "score is 0 to 100 for how strong the opening hook is and how well the clip should hold attention; be honest and spread the scores out. reason is one sentence on why the clip works.";
 
 const SCHEMA = {
   type: "OBJECT",
