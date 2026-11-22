@@ -958,9 +958,16 @@ $("goE").addEventListener("click",async function(){
   var v=document.createElement("video");v.src=url;v.playsInline=true;v.preload="auto";
   busy=true;cancel=false;$("goE").disabled=true;$("stopE").hidden=false;$("ebarw").hidden=false;$("ebar").style.width="0";$("result").hidden=true;
   msg($("estatus"),"Preparing...");
-  var ac,rec,chunks=[],done=false,plan=null,note="",vw=0,vh=0;
+  var ac,rec,chunks=[],done=false,plan=null,note="",vw=0,vh=0,recording=false;
+  /* while recording, if the window is hidden or covered: pause the video and the recorder so no frozen picture is recorded; resume when it is visible again */
+  function onVis(){
+    if(done||!recording)return;
+    if(document.hidden){try{v.pause()}catch(e){}try{if(rec.state==="recording")rec.pause()}catch(e){}}
+    else{try{if(rec.state==="paused")rec.resume()}catch(e){}if(!cancel)v.play().catch(function(){})}
+  }
   function end(ok,text,err){
     if(done)return;done=true;
+    document.removeEventListener("visibilitychange",onVis);
     try{v.pause()}catch(e){}
     try{ac&&ac.close()}catch(e){}
     busy=false;$("stopE").hidden=true;$("ebarw").hidden=true;check();
@@ -993,6 +1000,7 @@ $("goE").addEventListener("click",async function(){
     }
     await new Promise(function(res){v.onseeked=res;v.currentTime=Math.max(a,0.001)});
     rec.start(250);await v.play();
+    recording=true;document.addEventListener("visibilitychange",onVis);if(document.hidden)onVis();
     msg($("estatus"),"Recording clip...");
     var contain=fit||vw*16<=vh*9;
     (function frame(){
