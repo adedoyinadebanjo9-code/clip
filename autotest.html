@@ -847,7 +847,7 @@ $("goE").addEventListener("click",async function(){
     if(done)return;done=true;
     try{v.pause()}catch(e){}
     try{ac&&ac.close()}catch(e){}
-    busy=false;$("stopE").hidden=true;$("ebarw").hidden=true;check();
+    cv.hidden=true;busy=false;$("stopE").hidden=true;$("ebarw").hidden=true;check();
     msg($("estatus"),text,err);
   }
   try{
@@ -877,7 +877,7 @@ $("goE").addEventListener("click",async function(){
     }
     await new Promise(function(res){v.onseeked=res;v.currentTime=Math.max(a,0.001)});
     rec.start(250);await v.play();
-    msg($("estatus"),"Recording clip...");
+    msg($("estatus"),"Recording clip...");cv.hidden=false;
     var contain=fit||vw*16<=vh*9;
     (function frame(){
       if(done)return;
