@@ -56,6 +56,15 @@ canvas{width:100%;max-width:260px;aspect-ratio:9/16;background:#000;border-radiu
 .note{font-size:.88rem;color:var(--mute);margin:8px 0 0}
 a.dl{display:inline-block;background:var(--accent);color:var(--accent-ink);text-decoration:none;padding:11px 16px;border-radius:4px;font-weight:600}
 footer{color:var(--mute);font-size:.85rem;margin-top:20px}
+.capedit{border:1px solid var(--line);border-radius:4px;padding:10px 12px;margin:0 0 14px}
+.capedit summary{cursor:pointer;font-weight:600}
+.capwords{flex:1 1 280px;max-height:260px;overflow:auto;padding:4px;border:1px solid var(--line);border-radius:4px;background:var(--bg);position:relative}
+.cw{display:inline-flex;flex-direction:column;margin:0 6px 8px 0;vertical-align:top}
+.cw .ts{background:none;color:var(--mute);border:0;padding:0;min-height:0;font:.7rem var(--mono);text-align:left;text-decoration:underline;font-weight:400}
+.cw input{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:6px 8px;min-height:40px;min-width:3ch;max-width:100%}
+.cw.edited input{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.cw.removed input{border-style:dashed;opacity:.7}
+.cw.now input{background:var(--mark);color:#141a18}
 </style>
 </head>
 <body>
@@ -127,6 +136,21 @@ footer{color:var(--mute);font-size:.85rem;margin-top:20px}
 
 <section id="s4" hidden>
   <h2>Export</h2>
+  <details id="capedit" class="capedit">
+    <summary>Edit captions (optional)</summary>
+    <p class="note" style="margin:8px 0">Fix wrong words here. Each word keeps its timing, so captions stay in sync with the video. Tap a time to jump the video there.</p>
+    <div class="row" style="margin:8px 0">
+      <button class="ghost" id="capPlay" type="button">Play with captions</button>
+      <button class="ghost" id="capReload" type="button">Reload words</button>
+      <button class="ghost" id="capReset" type="button">Undo my edits</button>
+    </div>
+    <div class="status" id="capmsg" role="status"></div>
+    <div class="row" style="align-items:flex-start;margin-top:8px">
+      <div class="capwords" id="capwords"></div>
+      <canvas id="capedprev" width="360" height="640" style="max-width:170px" aria-label="Caption preview with your edits"></canvas>
+    </div>
+    <p class="note">The preview uses a centre crop. Your chosen framing is applied on export.</p>
+  </details>
   <div class="row">
     <label>Framing
       <select id="fit"><option value="crop">Center crop</option><option value="fit">Fit with black bars</option><option value="auto">Auto framing (follows people)</option></select>
@@ -831,12 +855,105 @@ function capPreview(){
 }
 ["capstyle","capsize","cappos","caps"].forEach(function(id){$(id).addEventListener("change",capPreview)});
 capPreview();
+/* ---------- caption editor (optional): fix words without changing their timing ---------- */
+var capEdits=new WeakMap(); /* word object -> {t: edited text} */
+/* Applies the user's edits to a list of transcript words. An unedited word is returned as is. Empty text removes the word.
+   Two or more words typed in one box share that word's time slot, split by letter count, so the timing stays in sync. */
+function capApply(list){
+  var out=[];
+  list.forEach(function(w){
+    var ed=capEdits.get(w);
+    if(!ed){out.push(w);return}
+    var parts=String(ed.t).trim().split(/\s+/).filter(Boolean);
+    if(!parts.length)return;
+    if(parts.length===1){out.push({w:parts[0],s:w.s,e:w.e});return}
+    var tot=0,cur=w.s,dur=Math.max(w.e-w.s,0.1*parts.length);
+    parts.forEach(function(p){tot+=p.length});
+    parts.forEach(function(p){var d=dur*p.length/tot;out.push({w:p,s:cur,e:cur+d});cur+=d});
+  });
+  return out;
+}
+var capShown=[],capRaf=0;
+function capClipWords(){
+  var r=range(),a=r[0],b=r[1];
+  if(isNaN(a)||isNaN(b)||b<=a)return null;
+  return {a:a,b:b,list:words.filter(function(w){return w.e>a&&w.s<b})};
+}
+function capSizeBox(inp){inp.size=Math.max(4,inp.value.length+1)}
+function capBuild(){
+  var box=$("capwords");box.textContent="";capShown=[];
+  var c=capClipWords();
+  if(!c||!c.list.length){msg($("capmsg"),"Choose a clip first (start and end words), then open this again.");capPlaceholder();return}
+  msg($("capmsg"),c.list.length+" words in this clip. Change a word, clear a box to remove it, or type two words in one box to split it.");
+  var frag=document.createDocumentFragment();
+  c.list.forEach(function(w,i){
+    var cell=document.createElement("span");cell.className="cw";
+    var ts=document.createElement("button");ts.type="button";ts.className="ts";ts.textContent=tc(w.s);ts.title="Jump the video to this word";
+    ts.addEventListener("click",function(){var h=function(){vid.removeEventListener("seeked",h);capDrawFrame(vid.currentTime,capApply(c.list))};vid.addEventListener("seeked",h);vid.currentTime=w.s});
+    var inp=document.createElement("input");inp.type="text";inp.value=capEdits.has(w)?capEdits.get(w).t:w.w;inp.setAttribute("aria-label","Word "+(i+1)+" at "+tc(w.s));
+    inp.autocomplete="off";inp.spellcheck=true;capSizeBox(inp);
+    function mark(){var ed=capEdits.has(w);cell.classList.toggle("edited",ed&&String(capEdits.get(w).t).trim()!=="");cell.classList.toggle("removed",ed&&String(capEdits.get(w).t).trim()==="")}
+    inp.addEventListener("input",function(){
+      if(inp.value===w.w)capEdits.delete(w);else capEdits.set(w,{t:inp.value});
+      capSizeBox(inp);mark();
+      if(vid.paused)capDrawFrame(vid.currentTime,capApply(c.list));
+    });
+    mark();cell.appendChild(ts);cell.appendChild(inp);frag.appendChild(cell);capShown.push({w:w,cell:cell});
+  });
+  box.appendChild(frag);
+  capPlaceholder();
+}
+function capPlaceholder(){
+  var cv=$("capedprev"),ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
+  var gr=ctx.createLinearGradient(0,0,0,H);gr.addColorStop(0,"#3b4743");gr.addColorStop(1,"#1b2220");
+  ctx.fillStyle=gr;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle="rgba(255,255,255,0.8)";ctx.font="600 "+Math.round(W*0.05)+"px "+getComputedStyle(document.body).fontFamily;ctx.textAlign="center";ctx.textBaseline="middle";
+  ctx.fillText("Press Play to preview",W/2,H/2);ctx.textAlign="start";
+}
+function capDrawFrame(t,list){
+  var cv=$("capedprev"),ctx=cv.getContext("2d"),W=cv.width,H=cv.height,vw=vid.videoWidth,vh=vid.videoHeight;
+  ctx.fillStyle="#000";ctx.fillRect(0,0,W,H);
+  if(vw&&vh){
+    if(vw*16<=vh*9){var k=Math.min(W/vw,H/vh),dw=vw*k,dh=vh*k;ctx.drawImage(vid,(W-dw)/2,(H-dh)/2,dw,dh)}
+    else{var sw=vh*9/16;ctx.drawImage(vid,(vw-sw)/2,0,sw,vh,0,0,W,H)}
+  }
+  if($("caps").value==="1")drawCaps(ctx,W,H,t,list,capOpts());
+}
+function capPlay(){
+  var c=capClipWords();
+  if(!c){msg($("capmsg"),"Choose a clip first (start and end words).",true);return}
+  cancelAnimationFrame(capRaf);
+  var started=performance.now();
+  vid.currentTime=c.a;vid.play();
+  (function loop(){
+    var t=vid.currentTime,list=capApply(c.list);
+    capDrawFrame(t,list);
+    capShown.forEach(function(x){x.cell.classList.toggle("now",t>=x.w.s&&t<x.w.e)});
+    var on=document.querySelector("#capwords .cw.now");
+    if(on){var bx=$("capwords");if(on.offsetTop<bx.scrollTop||on.offsetTop+on.offsetHeight>bx.scrollTop+bx.clientHeight)bx.scrollTop=Math.max(0,on.offsetTop-40)}
+    if(t>=c.b||vid.ended||(vid.paused&&performance.now()-started>400)){
+      if(!vid.paused)vid.pause();
+      capShown.forEach(function(x){x.cell.classList.remove("now")});
+      return;
+    }
+    capRaf=requestAnimationFrame(loop);
+  })();
+}
+$("capedit").addEventListener("toggle",function(){if($("capedit").open)capBuild()});
+$("capReload").addEventListener("click",capBuild);
+$("capPlay").addEventListener("click",capPlay);
+$("capReset").addEventListener("click",function(){capEdits=new WeakMap();capBuild()});
+$("st").addEventListener("input",function(){if($("capedit").open)capBuild()});
+$("en").addEventListener("input",function(){if($("capedit").open)capBuild()});
+["capstyle","capsize","cappos","caps"].forEach(function(id){$(id).addEventListener("change",function(){if($("capedit").open&&vid.paused&&capShown.length){var c=capClipWords();if(c)capDrawFrame(vid.currentTime,capApply(c.list))}})});
+new MutationObserver(function(){capEdits=new WeakMap();$("capwords").textContent="";capShown=[];if($("capedit").open)capBuild()}).observe($("script"),{childList:true});
 $("goE").addEventListener("click",async function(){
   if(busy||!check())return;
   var mime=pickMime();
   if(!mime){msg($("estatus"),"This browser cannot record video. Use a recent Chrome, Edge or Safari on desktop.",true);return}
   var r=range(),a=r[0],b=r[1],mode=$("fit").value,fit=mode==="fit",auto=mode==="auto",caps=$("caps").value==="1",capo=capOpts();
   var list=words.filter(function(w){return w.e>a&&w.s<b});
+  list=capApply(list);
   var cv=$("work"),ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
   var v=document.createElement("video");v.src=url;v.playsInline=true;v.preload="auto";
   busy=true;cancel=false;$("goE").disabled=true;$("stopE").hidden=false;$("ebarw").hidden=false;$("ebar").style.width="0";$("result").hidden=true;
