@@ -1,0 +1,858 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clipwise | Cut vertical clips from long videos</title>
+<meta name="description" content="Upload a video, pick a moment from the transcript, and export a vertical clip with captions. Runs in your browser.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230b6e66'/%3E%3Crect x='9' y='6' width='14' height='20' rx='2' fill='none' stroke='%23fff' stroke-width='2.4'/%3E%3Cpath d='M14 12l6 4-6 4z' fill='%23ffd84a'/%3E%3C/svg%3E">
+<style>
+:root{--bg:#dfe3e0;--panel:#f4f5f2;--ink:#141a18;--mute:#5b6561;--line:#c3c9c5;--accent:#0b6e66;--accent-ink:#fff;--mark:#ffd84a;--err:#a3281c;
+--font:"Avenir Next","Segoe UI","Helvetica Neue",Roboto,Arial,sans-serif;--mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+@media (prefers-color-scheme:dark){:root{--bg:#101413;--panel:#181e1c;--ink:#e9ece9;--mute:#97a39e;--line:#2b3430;--accent:#3fb8ac;--accent-ink:#06201d;--mark:#ffd84a;--err:#ff8a7a}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.5 var(--font)}
+main{max-width:920px;margin:0 auto;padding:20px 16px 48px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
+h1{font-size:1.5rem;margin:0;letter-spacing:-.01em}
+.tag{color:var(--mute);font-size:.9rem;max-width:46ch}
+section{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:16px;margin-bottom:14px}
+section[hidden]{display:none}
+h2{font-size:1.05rem;margin:0 0 10px}
+button,select,input{font:inherit;color:inherit}
+button{background:var(--accent);color:var(--accent-ink);border:0;border-radius:4px;padding:10px 16px;cursor:pointer;font-weight:600;min-height:44px}
+button.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.5;cursor:not-allowed}
+:focus-visible{outline:3px solid var(--mark);outline-offset:2px}
+select,input[type=number]{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:9px;min-height:44px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.drop{display:block;border:2px dashed var(--line);border-radius:6px;padding:26px 14px;text-align:center;cursor:pointer}
+.drop:hover,.drop.over{border-color:var(--accent)}
+.drop input{position:absolute;opacity:0;width:1px;height:1px}
+.drop:focus-within{outline:3px solid var(--mark)}
+video{width:100%;max-height:360px;background:#000;border-radius:4px;display:block}
+.bar{height:8px;background:var(--line);border-radius:4px;overflow:hidden;margin-top:10px}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.status{color:var(--mute);font-size:.92rem;margin-top:8px;min-height:1.4em}
+.status.err{color:var(--err);font-weight:600}
+.card{border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:4px;padding:12px;margin-top:10px;background:var(--bg)}
+.card h3{font-size:1rem;margin:0 0 4px}
+.card p{margin:4px 0 10px;color:var(--mute);font-size:.92rem}
+.card .meta{display:flex;gap:12px;flex-wrap:wrap;font-size:.9rem;margin-bottom:4px}
+.cfg{border:1px solid var(--line);border-radius:4px;padding:12px;margin-top:10px;display:grid;gap:10px}
+.cfg input[type=text],.cfg input[type=password],.cfg input[type=url]{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:9px;min-height:44px;width:100%}
+.cfg[hidden],.cfg div[hidden]{display:none}
+.script{position:relative;max-height:300px;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:12px;line-height:2;font-size:1.02rem}
+.script span{cursor:pointer;padding:3px 1px;border-radius:2px}
+.script span:hover{text-decoration:underline}
+.script span.in{background:var(--mark);color:#141a18}
+.tc{font-family:var(--mono);font-size:.95rem}
+label{font-size:.9rem;color:var(--mute);display:flex;flex-direction:column;gap:4px}
+.out{display:block;max-width:360px}
+.out[hidden]{display:none}
+@media (max-width:600px){.out{grid-template-columns:1fr}}
+canvas{width:100%;max-width:260px;aspect-ratio:9/16;background:#000;border-radius:4px;display:block}
+.note{font-size:.88rem;color:var(--mute);margin:8px 0 0}
+a.dl{display:inline-block;background:var(--accent);color:var(--accent-ink);text-decoration:none;padding:11px 16px;border-radius:4px;font-weight:600}
+footer{color:var(--mute);font-size:.85rem;margin-top:20px}
+</style>
+</head>
+<body>
+<main>
+<header>
+  <h1>Clipwise</h1>
+  <p class="tag">Pick a moment from your video's transcript and export it as a vertical clip with captions. Your video stays on your device.</p>
+  <div class="row"><button class="ghost" id="cfgB0" type="button" aria-expanded="false">AI settings</button><span class="note" id="cstate" style="margin:0"></span></div>
+</header>
+  <div class="cfg" id="cfg" hidden style="margin:0 0 14px">
+    <label>How should Clipwise reach the AI?
+      <select id="cmode"><option value="key">Use my own Gemini API key (this device only)</option><option value="proxy">Use a Supabase function</option></select>
+    </label>
+    <div id="cKey"><label>Gemini API key<input type="password" id="ckey" autocomplete="off"></label>
+      <p class="note">Stored in this browser and sent only to Google. Anyone using this device can read it, so do not use this option on a shared computer.</p></div>
+    <div id="cProxy" hidden><label>Function URL<input type="url" id="curl" placeholder="https://PROJECT.supabase.co/functions/v1/suggest-clips"></label>
+      <label>Supabase anon key<input type="text" id="canon" autocomplete="off"></label></div>
+    <div class="row"><button id="cSave" type="button">Save settings</button><button class="ghost" id="cTest" type="button">Test connection</button></div>
+  </div>
+
+<section id="s1">
+  <h2>Choose a video</h2>
+  <label class="drop" id="drop">
+    <input type="file" id="file" accept="video/*">
+    <strong>Select a video file</strong><br><span class="note">MP4, MOV or WebM. Up to 500 MB. Best on a desktop browser.</span>
+  </label>
+  <div class="status" id="s1status" role="status"></div>
+</section>
+
+<section id="s2" hidden>
+  <h2>Transcribe</h2>
+  <video id="vid" controls playsinline></video>
+  <div class="cfg" id="conv" hidden style="margin-top:12px">
+    <p class="note" id="convMsg" style="margin:0"></p>
+    <div><button id="convB" type="button">Convert for this browser</button></div>
+    <div class="bar" id="cbarw" hidden><i id="cbar"></i></div>
+  </div>
+  <div class="row" style="margin-top:12px">
+    <label>Model
+      <select id="model">
+        <option value="Xenova/whisper-tiny.en">Fast (tiny, English)</option>
+        <option value="Xenova/whisper-base.en">More accurate (base, English)</option>
+      </select>
+    </label>
+    <button id="goT" style="align-self:flex-end">Transcribe</button>
+  </div>
+  <div class="bar" id="tbarw" hidden><i id="tbar"></i></div>
+  <div class="status" id="tstatus" role="status"></div>
+</section>
+
+<section id="s3" hidden>
+  <h2>Select your clip</h2>
+  <div class="row">
+    <button id="goS">Suggest clips</button>
+    <button class="ghost" id="cfgB" type="button" aria-expanded="false">Connection settings</button>
+  </div>
+  <div class="status" id="sstatus" role="status"></div>
+  <div id="cards"></div>
+  <p class="note" style="margin:14px 0 8px">Or choose manually. Tap a word to set the start, then tap another word to set the end.</p>
+  <div class="script" id="script"></div>
+  <div class="row" style="margin-top:12px">
+    <label>Start (s)<input type="number" id="st" step="0.1" min="0"></label>
+    <label>End (s)<input type="number" id="en" step="0.1" min="0"></label>
+    <span class="tc" id="len" style="align-self:flex-end;padding-bottom:12px"></span>
+    <button class="ghost" id="prev" style="align-self:flex-end">Preview clip</button>
+  </div>
+  <div class="status" id="selstatus"></div>
+</section>
+
+<section id="s4" hidden>
+  <h2>Export</h2>
+  <div class="row">
+    <label>Framing
+      <select id="fit"><option value="crop">Center crop</option><option value="fit">Fit with black bars</option><option value="auto">Auto framing (follows people)</option></select>
+    </label>
+    <label>Captions
+      <select id="caps"><option value="1">On</option><option value="0">Off</option></select>
+    </label>
+    <button id="goE" style="align-self:flex-end">Export clip</button>
+    <button class="ghost" id="stopE" style="align-self:flex-end" hidden>Cancel</button>
+  </div>
+  <p class="note">Export plays the clip in real time while recording it, so a 45 second clip takes about 45 seconds. Auto framing scans the clip for people first, which takes about as long again, and downloads two small models the first time you use it. Keep this tab open and visible until it finishes.</p>
+  <div class="bar" id="ebarw" hidden><i id="ebar"></i></div>
+  <div class="status" id="estatus" role="status"></div>
+  <div class="out" id="result" hidden>
+    <div>
+      <video id="outv" controls playsinline style="max-height:420px"></video>
+      <p style="margin:12px 0 0"><a class="dl" id="dl" download="clip">Download clip</a></p>
+    </div>
+  </div>
+  <canvas id="work" width="720" height="1280" hidden></canvas>
+</section>
+
+<footer>Your video file never leaves your device, and transcription runs in your browser. The speech model is downloaded once from a public CDN. When you tap Suggest clips, the transcript text (not the video) is sent to Google's Gemini API, directly or through your Supabase function.</footer>
+</main>
+
+<script id="autologic">
+var AutoLogic=(function(){
+"use strict";
+var DEF={minScore:0.30,cutThreshold:0.05,minShotSec:0.3,stableFrac:0.5,insideFrac:0.8,matchDist:0.08,minCropShotSec:0.5};
+function median(a){
+  if(!a.length)return 0;
+  var s=a.slice().sort(function(x,y){return x-y}),m=s.length>>1;
+  return s.length%2?s[m]:(s[m-1]+s[m])/2;
+}
+function mean(a){if(!a.length)return 0;var s=0,i;for(i=0;i<a.length;i++)s+=a[i];return s/a.length}
+/* people: [{x,y,w,h,cx,cy,score}] as fractions of the frame. fp: tiny grey picture (array of 0..255) or null. */
+function normalizeSample(t,people,fp){
+  var p=(people||[]).slice().sort(function(a,b){return a.cx-b.cx});
+  return {t:t,people:p,fp:fp||null};
+}
+function visiblePeople(s,minScore){return s.people.filter(function(p){return p.score>=minScore})}
+/* 0 = identical pictures, 1 = black vs white. null when a picture is missing. */
+function frameDiff(a,b){
+  if(!a||!b||!a.length||a.length!==b.length)return null;
+  var sum=0,i;
+  for(i=0;i<a.length;i++)sum+=Math.abs(a[i]-b[i]);
+  return sum/(a.length*255);
+}
+function computeChanges(samples){
+  var out=[],i;
+  for(i=0;i<samples.length;i++){
+    if(i===0){out.push(0);continue}
+    var d=frameDiff(samples[i-1].fp,samples[i].fp);
+    out.push(d===null?0:d);
+  }
+  return out;
+}
+/* Indexes where a new shot starts. A burst of high changes (a fade) counts once: cuts closer than minShotSec to the last cut are ignored. */
+function detectCuts(times,changes,o){
+  var cuts=[],last=-Infinity,i;
+  for(i=1;i<changes.length;i++){
+    if(changes[i]>o.cutThreshold&&times[i]-last>=o.minShotSec){cuts.push(i);last=times[i]}
+  }
+  return cuts;
+}
+function shotIds(n,cuts){
+  var ids=[],id=0,k=0,i;
+  for(i=0;i<n;i++){
+    if(k<cuts.length&&cuts[k]===i){id++;k++}
+    ids.push(id);
+  }
+  return ids;
+}
+/* ---------- Phase 3b: crop windows ---------- */
+function mergeOpts(opt){var o={},k;for(k in DEF)o[k]=DEF[k];for(k in (opt||{}))if(opt[k]!==undefined)o[k]=opt[k];return o}
+/* A person counts as inside when at least `frac` of the box width is inside the window [L, L+wf]. */
+function insideCount(people,L,wf,frac){
+  var n=0,i;
+  for(i=0;i<people.length;i++){
+    var p=people[i],ov=Math.max(0,Math.min(p.x+p.w,L+wf)-Math.max(p.x,L));
+    if(ov>=frac*p.w-1e-9)n++;
+  }
+  return n;
+}
+/* people: stable boxes [{x,w,...}] as fractions of frame width. wf: window width as a fraction of frame width. */
+function placeWindow(people,wf,o){
+  var lo=Infinity,hi=-Infinity,i;
+  function clamp(L){return Math.max(0,Math.min(1-wf,L))}
+  for(i=0;i<people.length;i++){lo=Math.min(lo,people[i].x);hi=Math.max(hi,people[i].x+people[i].w)}
+  var gc=(lo+hi)/2;
+  if(hi-lo<=wf){var L0=clamp(gc-wf/2);return {left:L0,mode:"group",inside:insideCount(people,L0,wf,o.insideFrac)}}
+  var best=null;
+  for(i=0;i<people.length;i++){
+    var L=clamp(people[i].x+people[i].w/2-wf/2),n=insideCount(people,L,wf,o.insideFrac),dist=Math.abs(L+wf/2-gc);
+    if(!best||n>best.inside||(n===best.inside&&dist<best.dist))best={left:L,mode:"best",inside:n,dist:dist};
+  }
+  return {left:best.left,mode:"best",inside:best.inside};
+}
+/* Stable people in one shot: detections are grouped by horizontal position; a group counts when it appears in at least stableFrac of the shot's checks. */
+function stablePeople(samples,i0,i1,o){
+  o=mergeOpts(o);
+  var n=i1-i0+1,clusters=[],i,k,j;
+  for(i=i0;i<=i1;i++){
+    var v=visiblePeople(samples[i],o.minScore),taken={};
+    for(k=0;k<v.length;k++){
+      var bi=-1,bd=Infinity;
+      for(j=0;j<clusters.length;j++){
+        if(taken[j])continue;
+        var d=Math.abs(clusters[j].cx-v[k].cx);
+        if(d<o.matchDist&&d<bd){bd=d;bi=j}
+      }
+      if(bi<0){clusters.push({cx:v[k].cx,items:[v[k]]});taken[clusters.length-1]=true}
+      else{var c=clusters[bi];c.items.push(v[k]);c.cx=mean(c.items.map(function(q){return q.cx}));taken[bi]=true}
+    }
+  }
+  var out=[];
+  clusters.forEach(function(c){
+    if(c.items.length>=o.stableFrac*n){
+      out.push({x:median(c.items.map(function(q){return q.x})),y:median(c.items.map(function(q){return q.y})),
+        w:median(c.items.map(function(q){return q.w})),h:median(c.items.map(function(q){return q.h})),seen:c.items.length/n});
+    }
+  });
+  out.sort(function(a,b){return a.x-b.x});
+  return out;
+}
+/* A body box that is wider than the window can never be 80% inside it, wherever the window sits. */
+function tooWide(p,wf,o){return wf<o.insideFrac*p.w-1e-9}
+/* One fixed 9:16 window per shot. vw, vh: video size in pixels. faces (optional): {shotId: [stable face boxes]} measured by the page for shots that need them.
+   Modes: none (source already 9:16 or narrower), group, best, centre (nobody stable), prev (shot too short).
+   target: "face" when a too-wide body box was replaced by the face found inside it, "body" otherwise. needsFace: the shot has a body box wider than the window. */
+function cropPlan(samples,shots,vw,vh,opt,faces){
+  var o=mergeOpts(opt),wf=(vh*9/16)/vw,plan=[],i;
+  if(!(vw>0&&vh>0))return {wf:1,skip:true,shots:[],counts:{}};
+  var skip=wf>=0.999;
+  for(i=0;i<shots.length;i++){
+    var sh=shots[i],dur=sh.t1-sh.t0,mid=sh.i0+((sh.i1-sh.i0)>>1);
+    var rec={id:sh.id,i0:sh.i0,i1:sh.i1,t0:sh.t0,t1:sh.t1,label:sh.label,mid:mid,left:0,mode:"none",stable:[],bodies:[],inside:0,needsFace:false,target:"body",faceFound:null};
+    if(!skip){
+      if(dur<o.minCropShotSec&&i>0){rec.mode="prev";rec.left=plan[i-1].left}
+      else{
+        var st=stablePeople(samples,sh.i0,sh.i1,o),k;
+        rec.bodies=st;
+        var wide=st.filter(function(p){return tooWide(p,wf,o)});
+        rec.needsFace=wide.length>0;
+        var targets=st;
+        if(rec.needsFace&&faces&&faces[sh.id]!==undefined){
+          var fl=faces[sh.id]||[];
+          var used=fl.filter(function(f){
+            var fc=f.x+f.w/2;
+            return wide.some(function(p){return fc>=p.x&&fc<=p.x+p.w});
+          });
+          rec.faceFound=used.length>0;
+          if(used.length){
+            targets=st.filter(function(p){return !tooWide(p,wf,o)}).concat(used);
+            targets.sort(function(a,b){return a.x-b.x});
+            rec.target="face";
+          }
+        }
+        rec.stable=targets;
+        if(!targets.length){rec.mode="centre";rec.left=(1-wf)/2}
+        else{var w=placeWindow(targets,wf,o);rec.mode=w.mode;rec.left=w.left;rec.inside=w.inside}
+      }
+    }
+    plan.push(rec);
+  }
+  var counts={};plan.forEach(function(r){counts[r.mode]=(counts[r.mode]||0)+1});
+  return {wf:skip?1:wf,skip:skip,shots:plan,counts:counts};
+}
+/* Shots from the checks: a new shot starts at each detected cut. */
+function buildShots(samples,step,opt){
+  var o=mergeOpts(opt),times=samples.map(function(s){return s.t});
+  var changes=computeChanges(samples),cuts=detectCuts(times,changes,o),ids=shotIds(samples.length,cuts);
+  var shots=[],i,start=0;
+  for(i=1;i<=samples.length;i++){
+    if(i===samples.length||ids[i]!==ids[i-1]){
+      shots.push({id:ids[start],i0:start,i1:i-1,t0:times[start],t1:times[i-1]+step,label:""});
+      start=i;
+    }
+  }
+  return {shots:shots,cuts:cuts,changes:changes};
+}
+function plan(samples,step,vw,vh,opt,faces){
+  var b=buildShots(samples,step,opt),p=cropPlan(samples,b.shots,vw,vh,opt,faces);
+  p.cutCount=b.cuts.length;
+  return p;
+}
+/* Window left edge (fraction of frame width) at media time t. Before the first shot or after the last, the nearest shot's window is used. */
+function leftAt(p,t){
+  if(!p||p.skip||!p.shots||!p.shots.length)return 0;
+  var L=p.shots[0].left,i;
+  for(i=0;i<p.shots.length;i++){if(p.shots[i].t0<=t)L=p.shots[i].left;else break}
+  return L;
+}
+return {DEF:DEF,median:median,mean:mean,normalizeSample:normalizeSample,visiblePeople:visiblePeople,frameDiff:frameDiff,
+  computeChanges:computeChanges,detectCuts:detectCuts,shotIds:shotIds,mergeOpts:mergeOpts,insideCount:insideCount,
+  placeWindow:placeWindow,stablePeople:stablePeople,tooWide:tooWide,cropPlan:cropPlan,buildShots:buildShots,plan:plan,leftAt:leftAt};
+})();
+</script>
+<script>
+(function(){
+"use strict";
+var $=function(id){return document.getElementById(id)};
+var MAX_BYTES=500*1024*1024, MAX_CLIP=90;
+var file=null, url=null, words=[], selA=-1, selB=-1, worker=null, busy=false, cancel=false;
+var vid=$("vid");
+
+function tc(t){t=Math.max(0,t||0);var m=Math.floor(t/60),s=(t%60).toFixed(1);return m+":"+(s<10?"0":"")+s}
+function msg(el,t,err){el.textContent=t;el.className="status"+(err?" err":"")}
+
+/* ---------- 1. load file ---------- */
+function loadFile(f){
+  if(!f)return;
+  if(!/^video\//.test(f.type)&&!/\.(mp4|mov|webm|mkv|m4v)$/i.test(f.name)){msg($("s1status"),"That file is not a video. Choose an MP4, MOV or WebM file.",true);return}
+  if(f.size>MAX_BYTES){msg($("s1status"),"This file is "+Math.round(f.size/1048576)+" MB. The limit is 500 MB. Trim it or export a lower resolution first.",true);return}
+  attach(f);
+}
+function needConv(t){
+  $("convMsg").textContent=t+" You can convert it to a compatible MP4 here. It runs on your device and can take a few minutes.";
+  $("conv").hidden=false;msg($("tstatus"),"");
+}
+function attach(f){
+  if(url)URL.revokeObjectURL(url);
+  $("conv").hidden=true;
+  file=f;url=URL.createObjectURL(f);vid.src=url;
+  words=[];selA=selB=-1;$("s3").hidden=true;$("s4").hidden=true;$("result").hidden=true;
+  $("s2").hidden=false;msg($("s1status"),f.name+" ("+Math.round(f.size/1048576)+" MB) loaded.");msg($("tstatus"),"");
+  vid.onerror=function(){needConv("This browser cannot play this video format. iPhone videos are often HEVC, which many Windows browsers cannot decode.")};
+  vid.onloadedmetadata=function(){if(vid.videoWidth===0)needConv("This browser can read the sound but cannot decode the picture. This is common with iPhone HEVC video.")};
+}
+$("file").addEventListener("change",function(e){loadFile(e.target.files[0])});
+["dragover","dragenter"].forEach(function(n){$("drop").addEventListener(n,function(e){e.preventDefault();$("drop").classList.add("over")})});
+["dragleave","drop"].forEach(function(n){$("drop").addEventListener(n,function(e){e.preventDefault();$("drop").classList.remove("over");if(n==="drop")loadFile(e.dataTransfer.files[0])})});
+
+/* ---------- compatibility conversion (ffmpeg.wasm, loaded only when needed) ---------- */
+var ff=null,converting=false,ffLog=[];
+function loadScript(src){return new Promise(function(res,rej){var s=document.createElement("script");s.src=src;s.onload=res;s.onerror=function(){rej(new Error("Could not load the converter from the CDN."))};document.head.appendChild(s)})}
+async function getFF(){
+  if(ff)return ff;
+  var B="https://cdn.jsdelivr.net/npm/";
+  await loadScript(B+"@ffmpeg/ffmpeg@0.12.10/dist/umd/ffmpeg.js");
+  await loadScript(B+"@ffmpeg/util@0.12.1/dist/umd/index.js");
+  var core=B+"@ffmpeg/core@0.12.6/dist/umd/",U=window.FFmpegUtil,f=new window.FFmpegWASM.FFmpeg();
+  await f.load({
+    coreURL:await U.toBlobURL(core+"ffmpeg-core.js","text/javascript"),
+    wasmURL:await U.toBlobURL(core+"ffmpeg-core.wasm","application/wasm"),
+    classWorkerURL:await U.toBlobURL(B+"@ffmpeg/ffmpeg@0.12.10/dist/umd/814.ffmpeg.js","text/javascript")
+  });
+  f.on("log",function(e){ffLog.push(String(e.message||""));if(ffLog.length>4)ffLog.shift()});
+  ff=f;return f;
+}
+$("convB").addEventListener("click",async function(){
+  if(converting||!file)return;
+  converting=true;$("convB").disabled=true;$("cbarw").hidden=false;$("cbar").style.width="0";
+  var src=file,f=null,onP=null,stage="loading the converter";ffLog=[];
+  msg($("tstatus"),"Loading the converter (about 30 MB, downloaded once)...");
+  try{
+    f=await getFF();
+    onP=function(e){var p=Math.max(0,Math.min(1,e.progress||0));$("cbar").style.width=(p*100).toFixed(0)+"%";msg($("tstatus"),"Converting... "+(p*100).toFixed(0)+"%. Keep this tab open.")};
+    f.on("progress",onP);stage="reading the file";
+    msg($("tstatus"),"Converting... 0%. Keep this tab open.");
+    await f.writeFile("in.mov",new Uint8Array(await src.arrayBuffer()));
+    stage="converting";
+    var code=await f.exec(["-i","in.mov","-vf","scale=-2:'min(720,ih)'","-c:v","libx264","-preset","ultrafast","-crf","28","-pix_fmt","yuv420p","-c:a","aac","-b:a","128k","-movflags","+faststart","out.mp4"]);
+    if(code!==0)throw new Error("The converter could not process this file.");
+    var data=await f.readFile("out.mp4");
+    var out=new File([data],src.name.replace(/\.[^.]+$/,"")+"-compatible.mp4",{type:"video/mp4"});
+    try{await f.deleteFile("in.mov");await f.deleteFile("out.mp4")}catch(e){}
+    attach(out);
+    msg($("s1status"),out.name+" ("+Math.round(out.size/1048576)+" MB) ready.");
+    msg($("tstatus"),"Converted to a compatible MP4. You can transcribe now.");
+  }catch(e){
+    var why=(e&&e.message)||(typeof e==="string"?e:"")||(ffLog.length?ffLog.join(" | "):"no details");
+    msg($("tstatus"),"Conversion failed while "+stage+": "+why+". Try a shorter video, or on your iPhone use Settings > Camera > Formats > Most Compatible and record again.",true);
+  }finally{
+    if(f&&onP)f.off("progress",onP);
+    converting=false;$("convB").disabled=false;$("cbarw").hidden=true;
+  }
+});
+
+/* ---------- 2. transcribe (worker keeps the page responsive) ---------- */
+var WORKER_SRC=[
+"import { pipeline } from 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.5.1';",
+"var asr=null,loaded=null;",
+"self.onmessage=async function(e){",
+" var d=e.data;",
+" try{",
+"  if(loaded!==d.model){asr=await pipeline('automatic-speech-recognition',d.model,{progress_callback:function(p){self.postMessage({t:'dl',p:p})}});loaded=d.model}",
+"  self.postMessage({t:'run'});",
+"  var out=await asr(d.audio,{return_timestamps:'word',chunk_length_s:30,stride_length_s:5});",
+"  self.postMessage({t:'done',chunks:out.chunks||[]});",
+" }catch(err){self.postMessage({t:'err',m:String(err&&err.message||err)})}",
+"};"
+].join("\n");
+
+function decodeWith(ctx,buf){return new Promise(function(res,rej){var p=ctx.decodeAudioData(buf,res,rej);if(p&&p.catch)p.catch(rej)})}
+async function getAudio(f){
+  var raw=await f.arrayBuffer();
+  var AC=window.AudioContext||window.webkitAudioContext,OAC=window.OfflineAudioContext||window.webkitOfflineAudioContext;
+  var makers=[];if(AC)makers.push(function(){return new AC()});if(OAC)makers.push(function(){return new OAC(1,1,44100)});
+  var dec=null,last=null;
+  for(var k=0;k<makers.length&&!dec;k++){
+    var ctx=null;
+    try{ctx=makers[k]();dec=await decodeWith(ctx,raw.slice(0))}catch(e){last=e;dec=null}
+    try{ctx&&ctx.close&&ctx.close()}catch(e){}
+  }
+  if(!dec)throw new Error(last?((last.name?last.name+": ":"")+(last.message||"decode failed")):"no audio decoder available");
+  var n=dec.length,ch=dec.numberOfChannels,sr=dec.sampleRate,mono=new Float32Array(n);
+  for(var c=0;c<ch;c++){var d=dec.getChannelData(c);for(var i=0;i<n;i++)mono[i]+=d[i]/ch}
+  if(sr===16000)return mono;
+  var ratio=sr/16000,m=Math.floor(n/ratio),out=new Float32Array(m);
+  for(var j=0;j<m;j++){var a=Math.floor(j*ratio),b=Math.max(a+1,Math.min(n,Math.floor((j+1)*ratio))),s=0;for(var q=a;q<b;q++)s+=mono[q];out[j]=s/(b-a)}
+  return out;
+}
+
+$("goT").addEventListener("click",async function(){
+  if(busy||!file)return;
+  busy=true;$("goT").disabled=true;$("tbarw").hidden=false;$("tbar").style.width="0";
+  msg($("tstatus"),"Reading audio from the video...");
+  var audio;
+  try{audio=await getAudio(file)}
+  catch(e){needConv("This browser could not decode the audio. Converting may help, but it is slow and can fail on phones.");msg($("tstatus"),"Could not read the audio track ("+(e&&e.message||e)+"). The video may have no sound, or this browser cannot decode it.",true);busy=false;$("goT").disabled=false;$("tbarw").hidden=true;return}
+  if(audio.length<16000){msg($("tstatus"),"The audio is shorter than one second. Choose a longer video.",true);busy=false;$("goT").disabled=false;$("tbarw").hidden=true;return}
+  if(worker)worker.terminate();
+  try{worker=new Worker(URL.createObjectURL(new Blob([WORKER_SRC],{type:"text/javascript"})),{type:"module"})}
+  catch(e){msg($("tstatus"),"This browser does not support module workers. Use a recent Chrome, Edge or Safari.",true);busy=false;$("goT").disabled=false;return}
+  var t0=0,tick=null,mins=Math.round(audio.length/16000/60*10)/10;
+  worker.onmessage=function(ev){
+    var m=ev.data;
+    if(m.t==="dl"){
+      var p=m.p;
+      if(p.status==="progress"&&typeof p.progress==="number"){$("tbar").style.width=p.progress.toFixed(0)+"%";msg($("tstatus"),"Downloading speech model: "+p.progress.toFixed(0)+"%")}
+    }else if(m.t==="run"){
+      $("tbar").style.width="100%";t0=Date.now();
+      tick=setInterval(function(){msg($("tstatus"),"Transcribing "+mins+" min of audio... "+Math.round((Date.now()-t0)/1000)+"s elapsed")},500);
+    }else if(m.t==="done"){
+      clearInterval(tick);finishT(m.chunks);
+    }else if(m.t==="err"){
+      clearInterval(tick);msg($("tstatus"),"Transcription failed: "+m.m+" Check your connection (the model downloads on first use) and try again.",true);reset();
+    }
+  };
+  worker.onerror=function(){clearInterval(tick);msg($("tstatus"),"The transcription worker crashed. Try the Fast model or a shorter video.",true);reset()};
+  msg($("tstatus"),"Loading speech model...");
+  worker.postMessage({audio:audio,model:$("model").value},[audio.buffer]);
+  function reset(){busy=false;$("goT").disabled=false;$("tbarw").hidden=true}
+  function finishT(chunks){
+    words=[];
+    chunks.forEach(function(c){
+      var w=(c.text||"").trim();if(!w)return;
+      var s=c.timestamp&&c.timestamp[0]!=null?c.timestamp[0]:null;if(s==null)return;
+      var e=c.timestamp[1]!=null?c.timestamp[1]:s+0.4;
+      words.push({w:w,s:s,e:e});
+    });
+    reset();
+    if(!words.length){msg($("tstatus"),"No speech was detected. Check that the video has clear spoken audio.",true);return}
+    msg($("tstatus"),"Done. "+words.length+" words transcribed.");
+    buildScript();$("s3").hidden=false;$("s4").hidden=false;
+    msg($("sstatus"),"Transcript ready. Tap Suggest clips for AI ideas, or choose a clip manually below.");
+    $("s3").scrollIntoView({behavior:"smooth",block:"start"});
+  }
+});
+
+/* ---------- 3. select clip ---------- */
+function buildScript(){
+  var box=$("script");box.textContent="";
+  var frag=document.createDocumentFragment();
+  words.forEach(function(w,i){
+    var sp=document.createElement("span");sp.textContent=w.w;sp.dataset.i=i;sp.tabIndex=0;sp.setAttribute("role","button");
+    frag.appendChild(sp);frag.appendChild(document.createTextNode(" "));
+  });
+  box.appendChild(frag);selA=selB=-1;paint();
+  $("cards").textContent="";msg($("sstatus"),"");
+}
+function pick(i){
+  if(selA<0||selB>=0){selA=i;selB=-1}
+  else{if(i<selA){selB=selA;selA=i}else selB=i}
+  if(selB<0)$("st").value=words[selA].s.toFixed(1);
+  else{$("st").value=words[selA].s.toFixed(1);$("en").value=words[selB].e.toFixed(1)}
+  paint();
+}
+$("script").addEventListener("click",function(e){var i=e.target.dataset&&e.target.dataset.i;if(i!=null)pick(+i)});
+$("script").addEventListener("keydown",function(e){if((e.key==="Enter"||e.key===" ")&&e.target.dataset&&e.target.dataset.i!=null){e.preventDefault();pick(+e.target.dataset.i)}});
+function paint(){
+  var sp=$("script").children;
+  for(var i=0;i<sp.length;i++){var on=selA>=0&&i>=selA&&i<=(selB<0?selA:selB);sp[i].classList.toggle("in",on)}
+  check();
+}
+function range(){return [parseFloat($("st").value),parseFloat($("en").value)]}
+function check(){
+  var r=range(),a=r[0],b=r[1],ok=false;
+  if(isNaN(a)||isNaN(b)){msg($("selstatus"),"Select a start and end word, or type the times.");}
+  else if(b<=a){msg($("selstatus"),"The end must come after the start.",true)}
+  else if(b-a>MAX_CLIP){msg($("selstatus"),"Clips are limited to "+MAX_CLIP+" seconds. Shorten the range.",true)}
+  else{msg($("selstatus"),"");ok=true}
+  $("len").textContent=ok?"Length "+tc(b-a):"";
+  $("goE").disabled=!ok||busy;$("prev").disabled=!ok;
+  return ok;
+}
+$("st").addEventListener("input",check);$("en").addEventListener("input",check);
+$("prev").addEventListener("click",function(){
+  if(!check())return;var r=range();vid.currentTime=r[0];vid.play();
+  var h=function(){if(vid.currentTime>=r[1]){vid.pause();vid.removeEventListener("timeupdate",h)}};vid.addEventListener("timeupdate",h);
+});
+
+/* ---------- Phase 2: AI clip suggestions ---------- */
+var CFGK="clipwise.cfg",GEM_MODEL="gemini-3.8-flash",MAX_CHARS=60000,sbusy=false;
+var PROMPT="You choose short-form video clips from a transcript. Each line starts with its start time in seconds in square brackets. "+
+"Return 3 to 6 clips, each 20 to 60 seconds long, that make sense on their own: open on a strong hook, cover one complete idea or story beat, and end at a natural stop. "+
+"Use start and end times in seconds taken from the transcript timestamps. Clips must not overlap. "+
+"score is 0 to 100 for how well the clip should hold attention. title is a plain hook headline under 60 characters. reason is one sentence on why the clip works.";
+var SCHEMA={type:"OBJECT",properties:{clips:{type:"ARRAY",items:{type:"OBJECT",properties:{start:{type:"NUMBER"},end:{type:"NUMBER"},title:{type:"STRING"},score:{type:"NUMBER"},reason:{type:"STRING"}},required:["start","end","title","score","reason"]}}},required:["clips"]};
+function loadCfg(){try{return JSON.parse(localStorage.getItem(CFGK))||{}}catch(e){return {}}}
+function saveCfg(c){try{localStorage.setItem(CFGK,JSON.stringify(c));return true}catch(e){return false}}
+function showMode(){var p=$("cmode").value==="proxy";$("cKey").hidden=p;$("cProxy").hidden=!p}
+(function(){var c=loadCfg();$("cmode").value=c.mode||"key";$("ckey").value=c.key||"";$("curl").value=c.url||"";$("canon").value=c.anon||"";showMode()})();
+$("cmode").addEventListener("change",showMode);
+function toggleCfg(){var h=$("cfg").hidden;$("cfg").hidden=!h;$("cfgB0").setAttribute("aria-expanded",String(h));if(h)$("cfg").scrollIntoView({behavior:"smooth",block:"nearest"})}
+$("cfgB0").addEventListener("click",toggleCfg);$("cfgB").addEventListener("click",toggleCfg);
+function cState(){var c=loadCfg(),ok=c.mode==="proxy"?(c.url&&c.anon):c.key;$("cstate").textContent=ok?"AI settings saved on this device ("+(c.mode==="proxy"?"Supabase function":"your Gemini key")+").":"AI not set up yet. Open AI settings."}
+cState();
+$("cSave").addEventListener("click",function(){
+  var ok=saveCfg({mode:$("cmode").value,key:$("ckey").value.trim(),url:$("curl").value.trim(),anon:$("canon").value.trim()});
+  if(ok){$("cfg").hidden=true;cState()}else $("cstate").textContent="Could not save settings. Your browser may be blocking storage.";
+});
+$("cTest").addEventListener("click",async function(){
+  saveCfg({mode:$("cmode").value,key:$("ckey").value.trim(),url:$("curl").value.trim(),anon:$("canon").value.trim()});
+  $("cstate").textContent="Testing the connection...";
+  var sample="[0.0] Today I want to share three habits that changed how I work.\n[6.0] First, I write down the one task that matters before I open my phone.\n[13.0] Second, I work in focused blocks and then take a real break.\n[20.0] Third, I review my day in five minutes every evening.\n[27.0] These small habits added up to a calmer and more productive year.";
+  try{
+    var r=await askModel(sample,35);
+    $("cstate").textContent=(r&&r.clips)?"Connection works. The AI replied with "+r.clips.length+" clip idea(s).":"The service answered, but the reply was not in the expected format.";
+  }catch(e){
+    $("cstate").textContent="Test failed: "+((e&&e.name==="TypeError")?"could not reach the service. Check the function URL and the ALLOWED_ORIGIN secret.":(e&&e.message)||"unknown error");
+  }
+});
+function transcriptText(){
+  var lines=[],cur=[],t0=0;
+  words.forEach(function(w,i){
+    if(!cur.length)t0=w.s;cur.push(w.w);
+    var endS=/[.?!]$/.test(w.w)&&cur.length>=6;
+    if(cur.length>=14||endS||i===words.length-1){lines.push("["+t0.toFixed(1)+"] "+cur.join(" "));cur=[]}
+  });
+  return lines.join("\n");
+}
+async function askModel(text,dur){
+  var c=loadCfg(),r;
+  if(c.mode==="proxy"){
+    if(!c.url)throw new Error("Add your function URL in connection settings.");
+    r=await fetch(c.url,{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+(c.anon||""),"apikey":c.anon||""},body:JSON.stringify({transcript:text,duration:dur})});
+    if(!r.ok)throw new Error(r.status===429?"Too many requests. Wait a minute and try again.":"The function returned error "+r.status+". Check its logs in Supabase.");
+    return await r.json();
+  }
+  if(!c.key)throw new Error("Add your Gemini API key in connection settings.");
+  r=await fetch("https://generativelanguage.googleapis.com/v1beta/models/"+GEM_MODEL+":generateContent",{method:"POST",
+    headers:{"Content-Type":"application/json","x-goog-api-key":c.key},
+    body:JSON.stringify({contents:[{parts:[{text:PROMPT+"\nVideo length: "+Math.round(dur)+" seconds.\n\nTranscript:\n"+text}]}],generationConfig:{responseMimeType:"application/json",responseSchema:SCHEMA}})});
+  if(!r.ok)throw new Error(r.status===429?"Free quota reached. Wait a minute or try again tomorrow.":(r.status===400||r.status===403)?"Google rejected the request. Check that the API key is correct and the model name is still available.":"Google returned error "+r.status+".");
+  var j=await r.json(),p=j.candidates&&j.candidates[0]&&j.candidates[0].content&&j.candidates[0].content.parts;
+  if(!p||!p[0])throw new Error("The model returned nothing. Try again.");
+  return JSON.parse(p[0].text);
+}
+function nearest(t,key){var bi=0,bd=1e9;for(var i=0;i<words.length;i++){var d=Math.abs(words[i][key]-t);if(d<bd){bd=d;bi=i}}return bi}
+function cleanClips(raw){
+  var out=[];
+  ((raw&&raw.clips)||[]).forEach(function(c){
+    var s=+c.start,e=+c.end;if(!isFinite(s)||!isFinite(e))return;
+    var ia=nearest(s,"s"),ib=nearest(e,"e");if(ib<=ia)return;
+    var a=words[ia].s,b=words[ib].e,len=b-a;if(len<10||len>MAX_CLIP)return;
+    out.push({ia:ia,ib:ib,a:a,b:b,title:String(c.title||"Untitled").slice(0,80),score:Math.max(0,Math.min(100,Math.round(+c.score||0))),reason:String(c.reason||"").slice(0,220)});
+  });
+  out.sort(function(x,y){return y.score-x.score});
+  var keep=[];
+  out.forEach(function(c){
+    var dup=keep.some(function(k){return Math.min(k.b,c.b)-Math.max(k.a,c.a)>0.5*Math.min(k.b-k.a,c.b-c.a)});
+    if(!dup)keep.push(c);
+  });
+  return keep;
+}
+function setSel(ia,ib){
+  selA=ia;selB=ib;$("st").value=words[ia].s.toFixed(1);$("en").value=words[ib].e.toFixed(1);paint();
+  var box=$("script"),el=box.children[ia];if(el)box.scrollTop=Math.max(0,el.offsetTop-40);
+}
+function renderCards(list){
+  var box=$("cards");box.textContent="";
+  list.forEach(function(c){
+    var d=document.createElement("div");d.className="card";
+    var h=document.createElement("h3");h.textContent=c.title;
+    var m=document.createElement("div");m.className="meta tc";m.textContent=tc(c.a)+" to "+tc(c.b)+"  |  "+Math.round(c.b-c.a)+" s  |  Model rating "+c.score+"/100";
+    var p=document.createElement("p");p.textContent=c.reason;
+    var b=document.createElement("button");b.className="ghost";b.type="button";b.textContent="Use this clip";
+    b.addEventListener("click",function(){setSel(c.ia,c.ib);$("s4").scrollIntoView({behavior:"smooth",block:"nearest"})});
+    d.appendChild(h);d.appendChild(m);d.appendChild(p);d.appendChild(b);box.appendChild(d);
+  });
+}
+$("goS").addEventListener("click",async function(){
+  if(sbusy||!words.length)return;
+  var text=transcriptText(),dur=vid.duration||words[words.length-1].e;
+  if(text.length>MAX_CHARS){msg($("sstatus"),"This transcript is too long for one request (limit about 60,000 characters, roughly an hour of speech). Pick a clip manually or use a shorter video.",true);return}
+  sbusy=true;$("goS").disabled=true;$("cards").textContent="";msg($("sstatus"),"Asking the model for clip ideas...");
+  try{
+    var raw;
+    try{raw=await askModel(text,dur)}catch(e){if((e&&e.name==="SyntaxError"))raw=await askModel(text,dur);else throw e}
+    var list=cleanClips(raw);
+    if(!list.length)msg($("sstatus"),"The model returned no usable clips. Try again, or choose a clip manually below.",true);
+    else{renderCards(list);msg($("sstatus"),list.length+" suggestions. The rating is the model's opinion, not a view-count prediction. Review each one before exporting.")}
+  }catch(e){
+    msg($("sstatus"),(e&&e.name==="TypeError")?"Could not reach the service. Check your connection and the URL in connection settings.":(e&&e.name==="SyntaxError")?"The model returned invalid data twice. Try again.":(e&&e.message)||"Request failed.",true);
+  }finally{sbusy=false;$("goS").disabled=false}
+});
+
+/* ---------- 3b. auto framing (follows people) ---------- */
+var AF_VER="0.10.21",AF_BASE="https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@"+AF_VER;
+var AF_PERSON_URL="https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/float16/1/efficientdet_lite0.tflite";
+var AF_FACE_URL="https://huggingface.co/litert-community/MediaPipe-FaceLandmarker/resolve/main/face_landmarker.task";
+var AF_RATE=10,AF_MAXW=1280,AF_FPW=32,AF_FPH=18,AF_DET_MIN=0.15,AF_MAXP=6;
+var afMod=null,afFileset=null,afPerson=null,afFace=null,planCache={};
+async function afLoadLib(){
+  if(afMod&&afFileset)return;
+  try{afMod=await import(AF_BASE+"/vision_bundle.mjs")}catch(e){afMod=null;throw new Error("the vision library could not be loaded")}
+  try{afFileset=await afMod.FilesetResolver.forVisionTasks(AF_BASE+"/wasm")}catch(e){afFileset=null;throw new Error("the vision library's support files could not be loaded")}
+}
+async function afMake(cls,modelUrl,extra){
+  function opts(d){var o={baseOptions:{modelAssetPath:modelUrl,delegate:d},runningMode:"IMAGE"};for(var k in extra)o[k]=extra[k];return o}
+  try{return await cls.createFromOptions(afFileset,opts("GPU"))}
+  catch(e){return await cls.createFromOptions(afFileset,opts("CPU"))}
+}
+async function afPersonDetector(){
+  if(afPerson)return afPerson;
+  if(!afMod.ObjectDetector)throw new Error("the vision library has no person finder");
+  try{afPerson=await afMake(afMod.ObjectDetector,AF_PERSON_URL,{scoreThreshold:AF_DET_MIN,maxResults:AF_MAXP,categoryAllowlist:["person"]})}
+  catch(e){throw new Error("the person model could not be loaded")}
+  return afPerson;
+}
+async function afFaceFinder(){
+  if(afFace)return afFace;
+  if(!afMod.FaceLandmarker)throw new Error("the vision library has no face finder");
+  try{afFace=await afMake(afMod.FaceLandmarker,AF_FACE_URL,{numFaces:4})}
+  catch(e){throw new Error("the face model could not be loaded")}
+  return afFace;
+}
+function afSeek(v,t){
+  return new Promise(function(res,rej){
+    if(Math.abs(v.currentTime-t)<0.001&&v.readyState>=2){res();return}
+    var to=setTimeout(function(){v.removeEventListener("seeked",ok);rej(new Error("the video did not respond to seeking"))},8000);
+    function ok(){clearTimeout(to);v.removeEventListener("seeked",ok);res()}
+    v.addEventListener("seeked",ok);
+    v.currentTime=t;
+  });
+}
+function afReadPeople(res,W,H){
+  var out=[],dets=(res&&res.detections)||[],i;
+  for(i=0;i<dets.length;i++){
+    var d=dets[i],bb=d.boundingBox,c=d.categories&&d.categories[0];
+    if(!bb||!c||c.categoryName!=="person")continue;
+    var x=Math.max(0,bb.originX/W),y=Math.max(0,bb.originY/H);
+    var w=Math.min(1-x,bb.width/W),h=Math.min(1-y,bb.height/H);
+    out.push({x:x,y:y,w:w,h:h,cx:x+w/2,cy:y+h/2,score:c.score});
+  }
+  return out;
+}
+function afReadFaces(res){
+  var out=[],lms=(res&&res.faceLandmarks)||[],i,k;
+  for(i=0;i<lms.length;i++){
+    var lm=lms[i],x0=1,y0=1,x1=0,y1=0;
+    for(k=0;k<lm.length;k++){var q=lm[k];if(q.x<x0)x0=q.x;if(q.x>x1)x1=q.x;if(q.y<y0)y0=q.y;if(q.y>y1)y1=q.y}
+    if(x1>x0&&y1>y0)out.push({x:x0,y:y0,w:x1-x0,h:y1-y0,cx:(x0+x1)/2,cy:(y0+y1)/2,score:1});
+  }
+  return out;
+}
+/* Checks the clip range 10 times a second on its own hidden video, then plans one crop window per shot. */
+async function scanClip(v,a,b){
+  var vw=v.videoWidth,vh=v.videoHeight,dur=v.duration;
+  if(!vw||!vh||!isFinite(dur))throw new Error("the video size could not be read");
+  var st=$("estatus"),bar=$("ebar");
+  msg(st,"Auto framing: loading the person finder (the first time this downloads a model)...");
+  await afLoadLib();
+  var det=await afPersonDetector();
+  var sc=Math.min(1,AF_MAXW/vw),W=Math.max(1,Math.round(vw*sc)),H=Math.max(1,Math.round(vh*sc));
+  var work=document.createElement("canvas");work.width=W;work.height=H;var wx=work.getContext("2d");
+  var fc=document.createElement("canvas");fc.width=AF_FPW;fc.height=AF_FPH;var fx=fc.getContext("2d",{willReadFrequently:true});
+  function grab(){
+    wx.drawImage(v,0,0,W,H);fx.drawImage(v,0,0,AF_FPW,AF_FPH);
+    var d=fx.getImageData(0,0,AF_FPW,AF_FPH).data,fp=new Uint8Array(AF_FPW*AF_FPH),i,j;
+    for(i=0,j=0;i<fp.length;i++,j+=4)fp[i]=(d[j]*299+d[j+1]*587+d[j+2]*114)/1000;
+    return fp;
+  }
+  var step=1/AF_RATE,n=Math.floor((b-a)/step)+1,samples=[],i;
+  for(i=0;i<n;i++){
+    if(cancel)throw new Error("cancelled");
+    var t=Math.min(a+i*step,dur-0.05);
+    await afSeek(v,t);
+    var fp=grab(),res;
+    try{res=det.detect(work)}catch(e){throw new Error("person detection failed on a video frame")}
+    samples.push(AutoLogic.normalizeSample(t,afReadPeople(res,W,H),fp));
+    bar.style.width=((i+1)/n*100).toFixed(0)+"%";
+    msg(st,"Auto framing: looking for people... "+Math.round((i+1)/n*100)+"%");
+  }
+  var plan0=AutoLogic.plan(samples,step,vw,vh,null,null);
+  var need=plan0.shots.filter(function(r){return r.needsFace&&r.mode!=="prev"});
+  if(!need.length)return plan0;
+  var faces={};
+  try{
+    msg(st,"Auto framing: loading the face finder (the first time this downloads a model)...");
+    var fin=await afFaceFinder();
+    for(var n2=0;n2<need.length;n2++){
+      if(cancel)throw new Error("cancelled");
+      msg(st,"Auto framing: looking for faces... "+(n2+1)+" of "+need.length);
+      var r=need[n2],idx=[],fs=[];
+      [0.2,0.5,0.8].forEach(function(q){var k=r.i0+Math.round((r.i1-r.i0)*q);if(idx.indexOf(k)<0)idx.push(k)});
+      for(var m=0;m<idx.length;m++){
+        await afSeek(v,samples[idx[m]].t);
+        grab();
+        fs.push(AutoLogic.normalizeSample(samples[idx[m]].t,afReadFaces(fin.detect(work)),null));
+      }
+      faces[r.id]=AutoLogic.stablePeople(fs,0,fs.length-1,null);
+    }
+  }catch(e){
+    if(e&&e.message==="cancelled")throw e;
+    return plan0; /* faces are optional: keep the body-based plan */
+  }
+  return AutoLogic.plan(samples,step,vw,vh,null,faces);
+}
+async function analyseClip(a,b){
+  var key=url+"|"+a.toFixed(2)+"|"+b.toFixed(2);
+  if(planCache[key])return planCache[key];
+  var v=document.createElement("video");v.muted=true;v.playsInline=true;v.preload="auto";
+  try{
+    v.src=url;
+    await new Promise(function(res,rej){v.onloadedmetadata=res;v.onerror=function(){rej(new Error("the video could not be opened for scanning"))}});
+    var p=await scanClip(v,a,b);
+    planCache[key]=p;
+    return p;
+  }finally{
+    v.onloadedmetadata=null;v.onerror=null;
+    try{v.removeAttribute("src");v.load()}catch(e){}
+  }
+}
+
+/* ---------- 4. export: canvas + MediaRecorder ---------- */
+function pickMime(){
+  var c=["video/mp4;codecs=avc1.42E01E,mp4a.40.2","video/mp4","video/webm;codecs=vp9,opus","video/webm;codecs=vp8,opus","video/webm"];
+  for(var i=0;i<c.length;i++){if(window.MediaRecorder&&MediaRecorder.isTypeSupported(c[i]))return c[i]}
+  return "";
+}
+function drawCaps(ctx,W,H,t,list){
+  var idx=-1;for(var i=0;i<list.length;i++){if(list[i].s<=t)idx=i;else break}
+  if(idx<0||t>list[idx].e+0.8)return;
+  var g=Math.floor(idx/3)*3,grp=list.slice(g,g+3);
+  var size=Math.round(W*0.085);ctx.font="800 "+size+"px "+getComputedStyle(document.body).fontFamily;
+  var sp=ctx.measureText(" ").width,tot=-sp;
+  grp.forEach(function(w){tot+=ctx.measureText(w.w).width+sp});
+  if(tot>W*0.9){size=Math.floor(size*W*0.9/tot);ctx.font="800 "+size+"px "+getComputedStyle(document.body).fontFamily;
+    sp=ctx.measureText(" ").width;tot=-sp;grp.forEach(function(w){tot+=ctx.measureText(w.w).width+sp})}
+  var x=(W-tot)/2,y=H*0.74;
+  ctx.textBaseline="middle";ctx.lineJoin="round";ctx.lineWidth=Math.max(6,size*0.16);ctx.strokeStyle="#000";
+  grp.forEach(function(w,k){
+    var cur=(g+k)===idx;
+    ctx.strokeText(w.w,x,y);ctx.fillStyle=cur?"#ffd84a":"#fff";ctx.fillText(w.w,x,y);
+    x+=ctx.measureText(w.w).width+sp;
+  });
+}
+$("goE").addEventListener("click",async function(){
+  if(busy||!check())return;
+  var mime=pickMime();
+  if(!mime){msg($("estatus"),"This browser cannot record video. Use a recent Chrome, Edge or Safari on desktop.",true);return}
+  var r=range(),a=r[0],b=r[1],mode=$("fit").value,fit=mode==="fit",auto=mode==="auto",caps=$("caps").value==="1";
+  var list=words.filter(function(w){return w.e>a&&w.s<b});
+  var cv=$("work"),ctx=cv.getContext("2d"),W=cv.width,H=cv.height;
+  var v=document.createElement("video");v.src=url;v.playsInline=true;v.preload="auto";
+  busy=true;cancel=false;$("goE").disabled=true;$("stopE").hidden=false;$("ebarw").hidden=false;$("ebar").style.width="0";$("result").hidden=true;
+  msg($("estatus"),"Preparing...");
+  var ac,rec,chunks=[],done=false,plan=null,note="",vw=0,vh=0;
+  function end(ok,text,err){
+    if(done)return;done=true;
+    try{v.pause()}catch(e){}
+    try{ac&&ac.close()}catch(e){}
+    busy=false;$("stopE").hidden=true;$("ebarw").hidden=true;check();
+    msg($("estatus"),text,err);
+  }
+  try{
+    await new Promise(function(res,rej){v.onloadedmetadata=res;v.onerror=function(){rej(new Error("load"))}});
+    var AC=window.AudioContext||window.webkitAudioContext;ac=new AC();
+    if(ac.state==="suspended")await ac.resume();
+    var dest=ac.createMediaStreamDestination();ac.createMediaElementSource(v).connect(dest);
+    var stream=new MediaStream(cv.captureStream(30).getVideoTracks().concat(dest.stream.getAudioTracks()));
+    rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:4000000});
+    rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data)};
+    rec.onstop=function(){
+      if(cancel){end(false,"Export cancelled.");return}
+      var blob=new Blob(chunks,{type:mime.split(";")[0]});
+      if(!blob.size){end(false,"The export produced an empty file. Try again with the tab in the foreground.",true);return}
+      var u=URL.createObjectURL(blob),ext=/mp4/.test(mime)?"mp4":"webm";
+      $("outv").src=u;$("dl").href=u;$("dl").download="clip-"+tc(a).replace(":","m")+"."+ext;
+      $("result").hidden=false;end(true,"Done. "+(blob.size/1048576).toFixed(1)+" MB "+ext.toUpperCase()+"."+(plan?" Auto framing used ("+plan.shots.length+" shots).":"")+note);
+      $("result").scrollIntoView({behavior:"smooth",block:"nearest"});
+    };
+    vw=v.videoWidth;vh=v.videoHeight;
+    if(auto&&vw*16>vh*9){
+      try{plan=await analyseClip(a,b)}
+      catch(e){
+        if(e&&e.message==="cancelled")throw e;
+        plan=null;note=" Auto framing was not available ("+(e&&e.message||"unknown reason")+"), so the centre crop was used.";
+      }
+    }
+    await new Promise(function(res){v.onseeked=res;v.currentTime=Math.max(a,0.001)});
+    rec.start(250);await v.play();
+    msg($("estatus"),"Recording clip...");
+    var contain=fit||vw*16<=vh*9;
+    (function frame(){
+      if(done)return;
+      var t=v.currentTime;
+      if(cancel||t>=b||v.ended){if(rec.state!=="inactive")rec.stop();return}
+      ctx.fillStyle="#000";ctx.fillRect(0,0,W,H);
+      if(contain){var k=Math.min(W/vw,H/vh),dw=vw*k,dh=vh*k;ctx.drawImage(v,(W-dw)/2,(H-dh)/2,dw,dh)}
+      else{var sw=vh*9/16,sx=plan?AutoLogic.leftAt(plan,t)*vw:(vw-sw)/2;sx=Math.max(0,Math.min(vw-sw,sx));ctx.drawImage(v,sx,0,sw,vh,0,0,W,H)}
+      if(caps)drawCaps(ctx,W,H,t,list);
+      $("ebar").style.width=Math.min(100,(t-a)/(b-a)*100).toFixed(0)+"%";
+      requestAnimationFrame(frame);
+    })();
+  }catch(e){
+    if(e&&e.message==="cancelled"){end(false,"Export cancelled.");return}
+    end(false,"Export failed: "+(e&&e.message==="load"?"the video could not be loaded for export.":(e&&e.message||"unknown error"))+" Try a shorter clip or an H.264 MP4.",true);
+  }
+});
+$("stopE").addEventListener("click",function(){cancel=true});
+document.addEventListener("visibilitychange",function(){if(document.hidden&&busy)msg($("estatus"),"Keep this tab visible. Recording slows down in the background.",true)});
+})();
+</script>
+</body>
+</html>
