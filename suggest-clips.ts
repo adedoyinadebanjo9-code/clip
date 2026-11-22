@@ -9,10 +9,13 @@ const LIMIT = 6;          // requests per IP per window (best effort, resets whe
 const WINDOW_MS = 60_000;
 
 const PROMPT =
-  "You choose short-form video clips from a transcript. Each line starts with its start time in seconds in square brackets. " +
-  "Return 3 to 6 clips, each 20 to 60 seconds long, that make sense on their own: open on a strong hook, cover one complete idea or story beat, and end at a natural stop. " +
+ " You choose short-form video clips (TikTok, Reels, Shorts,and those types) from a transcript. Each line starts with its start time in seconds in square brackets. " +
+  "Return 3 to 6 clips, each 20 to 45 seconds long, that make sense on their own. " +
+  "HOOK RULES: the first 3 seconds decide whether people keep watching. Start the clip on a bold claim, a surprising fact, a question, a conflict, or the start of a story that creates curiosity. Never start on filler (so, um, okay, welcome back, thanks for watching). Prefer to start at the beginning of a sentence. " +
+  "WATCH-TIME RULES: no slow lead-in; deliver the payoff or answer inside the clip; cover one complete idea; end right after the payoff. " +
   "Use start and end times in seconds taken from the transcript timestamps. Clips must not overlap. " +
-  "score is 0 to 100 for how well the clip should hold attention. title is a plain hook headline under 60 characters. reason is one sentence on why the clip works.";
+  "hook is the on-screen text for the first seconds: under 8 words, plain and specific, and true to what the clip delivers. " +
+  "title is a headline under 60 characters. score is 0 to 100 for how strong the hook is and how well the clip should hold attention. reason is one sentence on why the clip works.";
 
 const SCHEMA = {
   type: "OBJECT",
