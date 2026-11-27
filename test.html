@@ -181,6 +181,7 @@ footer{color:var(--mute);font-size:.85rem;margin-top:20px}
     <div class="row" style="margin-top:12px">
       <label>Hook headline<select id="hookon"><option value="0">Off</option><option value="1">On (first 3 seconds)</option></select></label>
       <label>Hook text<input type="text" id="hooktext" maxlength="80" placeholder="Filled from the AI clip title"></label>
+      <label>Motion graphics<select id="motion"><option value="0">Off</option><option value="1">On (hook pop-in, progress bar)</option></select></label>
     </div>
     <div class="row" style="margin-top:12px">
       <label>Brand colour<input type="color" id="brcol" value="#ffd84a"></label>
@@ -843,6 +844,7 @@ function drawCaps(ctx,W,H,t,list,o){
   o=o||{style:"classic",size:0.085,y:0.74};
   var idx=-1;for(var i=0;i<list.length;i++){if(list[i].s<=t)idx=i;else break}
   if(idx<0||t>list[idx].e+0.8)return;
+  ctx.save();ctx.textAlign="left";ctx.globalAlpha=1;ctx.shadowBlur=0;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;ctx.setLineDash([]);
   var st=o.style,one=st==="one";
   var g=one?idx:Math.floor(idx/3)*3,grp=one?[list[idx]]:list.slice(g,g+3);
   var fam=BR.font||getComputedStyle(document.body).fontFamily;
@@ -871,6 +873,7 @@ function drawCaps(ctx,W,H,t,list,o){
     }
     x+=ww+sp;
   });
+  ctx.restore();
 }
 /* small live preview next to the caption controls */
 var CAP_SAMPLE=[{w:"Your",s:0,e:0.4},{w:"captions",s:0.4,e:0.9},{w:"will",s:0.9,e:1.2},{w:"look",s:1.2,e:1.6},{w:"like",s:1.6,e:1.9},{w:"this",s:1.9,e:2.3}];
@@ -885,7 +888,7 @@ capPreview();
 
 /* ---------- Batch A: hook headline, brand kit, recipes (additive) ---------- */
 (function(){
-  var BK="clipwise_brand",RK="clipwise_recipes",RF=["fit","caps","capstyle","capsize","cappos","hookon","brcol","brfont"];
+  var BK="clipwise_brand",RK="clipwise_recipes",RF=["fit","caps","capstyle","capsize","cappos","hookon","motion","brcol","brfont"];
   function ls(k){try{return JSON.parse(localStorage.getItem(k))||null}catch(e){return null}}
   function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}
   function note(t,err){msg($("rcstatus"),t,err)}
@@ -914,18 +917,30 @@ capPreview();
     words.forEach(function(w){var t=cur?cur+" "+w:w;if(cur&&ctx.measureText(t).width>maxW){lines.push(cur);cur=w}else cur=t});
     if(cur)lines.push(cur);return lines.slice(0,3);
   }
-  window.drawExtras=function(ctx,W,H,rel){
+  window.drawExtras=function(ctx,W,H,rel,len){
+    var mo=$("motion").value==="1";
     if(BR.logo){var lh=H*0.07,lw=BR.logo.width/BR.logo.height*lh;ctx.drawImage(BR.logo,W-lw-W*0.04,H*0.04,lw,lh)}
+    if(mo&&len>0){var pr=Math.max(0,Math.min(1,rel/len)),pb=Math.max(4,H*0.006);
+      ctx.fillStyle="rgba(255,255,255,0.25)";ctx.fillRect(0,H-pb,W,pb);ctx.fillStyle=BR.accent;ctx.fillRect(0,H-pb,W*pr,pb)}
     var txt=($("hooktext").value||"").trim();
     if($("hookon").value!=="1"||!txt||rel<0||rel>3)return;
     var al=Math.min(1,rel/0.25,(3-rel)/0.3),size=Math.round(W*0.07),fam=BR.font||getComputedStyle(document.body).fontFamily;
     ctx.save();ctx.globalAlpha=Math.max(0,al);ctx.font="800 "+size+"px "+fam;ctx.textBaseline="middle";ctx.textAlign="left";
     var key=txt+"|"+W+"|"+fam;if(key!==wrapKey){wrapKey=key;wrapLines=wrap(ctx,txt,W*0.78)}
     var lw2=0;wrapLines.forEach(function(l){lw2=Math.max(lw2,ctx.measureText(l).width)});
-    var pad=size*0.5,bw=lw2+pad*2,bh=wrapLines.length*size*1.2+pad*1.2,bx=(W-bw)/2,by=H*0.1;
+    var pad=size*0.5,bw=lw2+pad*2,bh=wrapLines.length*size*1.2+pad*1.2,by=H*0.13;
+    /* keep the hook clear of the captions: if they would overlap, move the hook to the other half of the frame */
+    if($("caps").value==="1"){
+      var co=capOpts(),cy=H*co.y,ch=W*co.size*1.6;
+      function hit(y){return y<cy+ch&&y+bh>cy-ch}
+      if(hit(by)){by=H*0.62;if(hit(by))by=H*0.3}
+    }
+    var bx=(W-bw)/2,sc=1;
+    if(mo){var e=Math.min(1,rel/0.35),c1=1.70158,c3=c1+1;sc=0.6+0.4*(1+c3*Math.pow(e-1,3)+c1*Math.pow(e-1,2))}
+    ctx.translate(W/2,by+bh/2);ctx.scale(sc,sc);ctx.translate(-W/2,-(by+bh/2));
     ctx.fillStyle=BR.accent;rr(ctx,bx,by,bw,bh,size*0.35);ctx.fill();
-    ctx.fillStyle="#141a18";
-    wrapLines.forEach(function(l,i){ctx.textAlign="center";ctx.fillText(l,W/2,by+pad*0.6+size*0.6+i*size*1.2)});
+    ctx.fillStyle="#141a18";ctx.textAlign="center";
+    wrapLines.forEach(function(l,i){ctx.fillText(l,W/2,by+pad*0.6+size*0.6+i*size*1.2)});
     ctx.restore();
   };
   /* recipes: a saved bundle of the export settings */
@@ -933,6 +948,7 @@ capPreview();
   function fillList(sel){var r=recipes(),l=$("rclist");l.textContent="";
     Object.keys(r).forEach(function(n){var o=document.createElement("option");o.value=n;o.textContent=n;l.appendChild(o)});
     if(sel)l.value=sel}
+  if(!localStorage.getItem(RK)){lsSet(RK,{"Social edits":{fit:"auto",caps:"1",capstyle:"pill",capsize:"m",cappos:"low",hookon:"1",motion:"1",brcol:$("brcol").value,brfont:$("brfont").value}})}
   fillList();
   $("rcsave").addEventListener("click",function(){
     var n=$("rcname").value.trim();if(!n){note("Type a name for the recipe first.",true);return}
@@ -1097,11 +1113,12 @@ $("goE").addEventListener("click",async function(){
       if(done)return;
       var t=v.currentTime;
       if(cancel||t>=b||v.ended){if(rec.state!=="inactive")rec.stop();return}
+      ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.textAlign="left";
       ctx.fillStyle="#000";ctx.fillRect(0,0,W,H);
       if(contain){var k=Math.min(W/vw,H/vh),dw=vw*k,dh=vh*k;ctx.drawImage(v,(W-dw)/2,(H-dh)/2,dw,dh)}
       else{var sw=vh*9/16,sx=plan?AutoLogic.leftAt(plan,t)*vw:(vw-sw)/2;sx=Math.max(0,Math.min(vw-sw,sx));ctx.drawImage(v,sx,0,sw,vh,0,0,W,H)}
       if(caps)drawCaps(ctx,W,H,t,list,capo);
-      try{window.drawExtras(ctx,W,H,t-a)}catch(e){}
+      try{window.drawExtras(ctx,W,H,t-a,b-a)}catch(e){}
       $("ebar").style.width=Math.min(100,(t-a)/(b-a)*100).toFixed(0)+"%";
       requestAnimationFrame(frame);
     })();
