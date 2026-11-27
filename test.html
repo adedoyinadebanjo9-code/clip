@@ -181,7 +181,12 @@ footer{color:var(--mute);font-size:.85rem;margin-top:20px}
     <div class="row" style="margin-top:12px">
       <label>Hook headline<select id="hookon"><option value="0">Off</option><option value="1">On (first 3 seconds)</option></select></label>
       <label>Hook text<input type="text" id="hooktext" maxlength="80" placeholder="Filled from the AI clip title"></label>
-      <label>Motion graphics<select id="motion"><option value="0">Off</option><option value="1">On (hook pop-in, progress bar)</option></select></label>
+      <label>Motion graphics<select id="motion"><option value="0">Off</option><option value="1">On</option></select></label>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <label>Punch-in zoom<select id="fxzoom"><option value="0">Off</option><option value="1">On</option></select></label>
+      <label>Emoji pop-ups<select id="fxemoji"><option value="0">Off</option><option value="1">On</option></select></label>
+      <label>Sound effects<select id="fxsound"><option value="0">Off</option><option value="1">On</option></select></label>
     </div>
     <div class="row" style="margin-top:12px">
       <label>Brand colour<input type="color" id="brcol" value="#ffd84a"></label>
@@ -838,16 +843,14 @@ function pickMime(){
 /* Caption looks (Phase 3c). "classic" is the original look and the default. */
 var CAP_SIZES={s:0.07,m:0.085,l:0.10},CAP_POS={top:0.2,mid:0.5,low:0.74,bot:0.86};
 function capOpts(){return {style:$("capstyle").value,size:CAP_SIZES[$("capsize").value]||0.085,y:CAP_POS[$("cappos").value]||0.74}}
-var BR={accent:"#ffd84a",font:"",logo:null};
 function rr(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
 function drawCaps(ctx,W,H,t,list,o){
   o=o||{style:"classic",size:0.085,y:0.74};
   var idx=-1;for(var i=0;i<list.length;i++){if(list[i].s<=t)idx=i;else break}
   if(idx<0||t>list[idx].e+0.8)return;
-  ctx.save();ctx.textAlign="left";ctx.globalAlpha=1;ctx.shadowBlur=0;ctx.shadowOffsetX=0;ctx.shadowOffsetY=0;ctx.setLineDash([]);
   var st=o.style,one=st==="one";
   var g=one?idx:Math.floor(idx/3)*3,grp=one?[list[idx]]:list.slice(g,g+3);
-  var fam=BR.font||getComputedStyle(document.body).fontFamily;
+  var fam=getComputedStyle(document.body).fontFamily;
   var size=Math.round(W*o.size*(one?1.3:1));ctx.font="800 "+size+"px "+fam;
   var sp=ctx.measureText(" ").width,tot=-sp;
   grp.forEach(function(w){tot+=ctx.measureText(w.w).width+sp});
@@ -860,20 +863,19 @@ function drawCaps(ctx,W,H,t,list,o){
   grp.forEach(function(w,k){
     var cur=(g+k)===idx,ww=ctx.measureText(w.w).width;
     if(st==="pill"&&cur){
-      var pp=size*0.22;ctx.fillStyle=BR.accent;rr(ctx,x-pp,y-size*0.65,ww+pp*2,size*1.3,size*0.28);ctx.fill();
+      var pp=size*0.22;ctx.fillStyle="#ffd84a";rr(ctx,x-pp,y-size*0.65,ww+pp*2,size*1.3,size*0.28);ctx.fill();
       ctx.fillStyle="#141a18";ctx.fillText(w.w,x,y);
     }else if(st==="box"){
-      ctx.fillStyle=cur?BR.accent:"#fff";ctx.fillText(w.w,x,y);
+      ctx.fillStyle=cur?"#ffd84a":"#fff";ctx.fillText(w.w,x,y);
     }else if(st==="minimal"){
       ctx.save();ctx.shadowColor="rgba(0,0,0,0.75)";ctx.shadowBlur=size*0.18;ctx.shadowOffsetY=size*0.04;
       ctx.fillStyle=cur?"#fff":"rgba(255,255,255,0.65)";ctx.fillText(w.w,x,y);ctx.restore();
     }else{
       ctx.lineWidth=lw;ctx.strokeStyle="#000";ctx.strokeText(w.w,x,y);
-      ctx.fillStyle=((st==="classic"||one)&&cur)?BR.accent:"#fff";ctx.fillText(w.w,x,y);
+      ctx.fillStyle=((st==="classic"||one)&&cur)?"#ffd84a":"#fff";ctx.fillText(w.w,x,y);
     }
     x+=ww+sp;
   });
-  ctx.restore();
 }
 /* small live preview next to the caption controls */
 var CAP_SAMPLE=[{w:"Your",s:0,e:0.4},{w:"captions",s:0.4,e:0.9},{w:"will",s:0.9,e:1.2},{w:"look",s:1.2,e:1.6},{w:"like",s:1.6,e:1.9},{w:"this",s:1.9,e:2.3}];
@@ -886,16 +888,17 @@ function capPreview(){
 ["capstyle","capsize","cappos","caps"].forEach(function(id){$(id).addEventListener("change",capPreview)});
 capPreview();
 
-/* ---------- Batch A: hook headline, brand kit, recipes (additive) ---------- */
+/* ---------- Batch A: hook headline, brand kit, recipes. Separate from the caption code, which is not touched. ---------- */
 (function(){
-  var BK="clipwise_brand",RK="clipwise_recipes",RF=["fit","caps","capstyle","capsize","cappos","hookon","motion","brcol","brfont"];
+  var BR={accent:"#ffd84a",font:"",logo:null};
+  var BK="clipwise_brand",RK="clipwise_recipes",RF=["fit","caps","capstyle","capsize","cappos","hookon","motion","fxzoom","fxemoji","fxsound","brcol","brfont"];
   function ls(k){try{return JSON.parse(localStorage.getItem(k))||null}catch(e){return null}}
   function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch(e){return false}}
   function note(t,err){msg($("rcstatus"),t,err)}
-  function applyBrand(){BR.accent=$("brcol").value||"#ffd84a";BR.font=$("brfont").value;capPreview()}
+  function applyBrand(){BR.accent=$("brcol").value||"#ffd84a";BR.font=$("brfont").value}
   function saveBrand(){lsSet(BK,{col:$("brcol").value,font:$("brfont").value,logo:BR.logo?BR.logo.src:null})}
   var b0=ls(BK);
-  if(b0){if(b0.col)$("brcol").value=b0.col;$("brfont").value=b0.font||"";if(b0.logo){var im=new Image();im.onload=function(){BR.logo=im};im.src=b0.logo}}
+  if(b0){if(b0.col)$("brcol").value=b0.col;$("brfont").value=b0.font||"";if(b0.logo){var im0=new Image();im0.onload=function(){BR.logo=im0};im0.src=b0.logo}}
   applyBrand();
   ["brcol","brfont"].forEach(function(id){$(id).addEventListener("change",function(){applyBrand();saveBrand()})});
   $("brlogo").addEventListener("change",function(){
@@ -910,45 +913,109 @@ capPreview();
     fr.readAsDataURL(f);
   });
   $("brclr").addEventListener("click",function(){BR.logo=null;$("brlogo").value="";saveBrand();note("Logo removed.")});
-  /* hook: wraps the headline into up to 3 lines and shows it in the first 3 seconds with a short fade */
   var wrapKey="",wrapLines=[];
   function wrap(ctx,text,maxW){
-    var words=text.split(/\s+/).filter(Boolean),lines=[],cur="";
-    words.forEach(function(w){var t=cur?cur+" "+w:w;if(cur&&ctx.measureText(t).width>maxW){lines.push(cur);cur=w}else cur=t});
+    var ws=text.split(/\s+/).filter(Boolean),lines=[],cur="";
+    ws.forEach(function(w){var t=cur?cur+" "+w:w;if(cur&&ctx.measureText(t).width>maxW){lines.push(cur);cur=w}else cur=t});
     if(cur)lines.push(cur);return lines.slice(0,3);
   }
+  function box(ctx,x,y,w,h,r){ctx.beginPath();ctx.moveTo(x+r,y);ctx.arcTo(x+w,y,x+w,y+h,r);ctx.arcTo(x+w,y+h,x,y+h,r);ctx.arcTo(x,y+h,x,y,r);ctx.arcTo(x,y,x+w,y,r);ctx.closePath()}
+  /* Draws on top of the finished frame inside save/restore, so it leaves the canvas exactly as the captions expect it. */
   window.drawExtras=function(ctx,W,H,rel,len){
-    var mo=$("motion").value==="1";
-    if(BR.logo){var lh=H*0.07,lw=BR.logo.width/BR.logo.height*lh;ctx.drawImage(BR.logo,W-lw-W*0.04,H*0.04,lw,lh)}
-    if(mo&&len>0){var pr=Math.max(0,Math.min(1,rel/len)),pb=Math.max(4,H*0.006);
-      ctx.fillStyle="rgba(255,255,255,0.25)";ctx.fillRect(0,H-pb,W,pb);ctx.fillStyle=BR.accent;ctx.fillRect(0,H-pb,W*pr,pb)}
-    var txt=($("hooktext").value||"").trim();
-    if($("hookon").value!=="1"||!txt||rel<0||rel>3)return;
-    var al=Math.min(1,rel/0.25,(3-rel)/0.3),size=Math.round(W*0.07),fam=BR.font||getComputedStyle(document.body).fontFamily;
-    ctx.save();ctx.globalAlpha=Math.max(0,al);ctx.font="800 "+size+"px "+fam;ctx.textBaseline="middle";ctx.textAlign="left";
-    var key=txt+"|"+W+"|"+fam;if(key!==wrapKey){wrapKey=key;wrapLines=wrap(ctx,txt,W*0.78)}
-    var lw2=0;wrapLines.forEach(function(l){lw2=Math.max(lw2,ctx.measureText(l).width)});
-    var pad=size*0.5,bw=lw2+pad*2,bh=wrapLines.length*size*1.2+pad*1.2,by=H*0.13;
-    /* keep the hook clear of the captions: if they would overlap, move the hook to the other half of the frame */
-    if($("caps").value==="1"){
-      var co=capOpts(),cy=H*co.y,ch=W*co.size*1.6;
-      function hit(y){return y<cy+ch&&y+bh>cy-ch}
-      if(hit(by)){by=H*0.62;if(hit(by))by=H*0.3}
-    }
-    var bx=(W-bw)/2,sc=1;
-    if(mo){var e=Math.min(1,rel/0.35),c1=1.70158,c3=c1+1;sc=0.6+0.4*(1+c3*Math.pow(e-1,3)+c1*Math.pow(e-1,2))}
-    ctx.translate(W/2,by+bh/2);ctx.scale(sc,sc);ctx.translate(-W/2,-(by+bh/2));
-    ctx.fillStyle=BR.accent;rr(ctx,bx,by,bw,bh,size*0.35);ctx.fill();
-    ctx.fillStyle="#141a18";ctx.textAlign="center";
-    wrapLines.forEach(function(l,i){ctx.fillText(l,W/2,by+pad*0.6+size*0.6+i*size*1.2)});
-    ctx.restore();
+    ctx.save();
+    try{
+      var mo=$("motion").value==="1";
+      fireSfx(rel);if($("fxemoji").value==="1")drawEmoji(ctx,W,H,rel);
+      if(BR.logo){var lh=H*0.07,lw=BR.logo.width/BR.logo.height*lh;ctx.drawImage(BR.logo,W-lw-W*0.04,H*0.04,lw,lh)}
+      if(mo&&len>0){var pr=Math.max(0,Math.min(1,rel/len)),pb=Math.max(4,H*0.006);
+        ctx.fillStyle="rgba(255,255,255,0.25)";ctx.fillRect(0,H-pb,W,pb);ctx.fillStyle=BR.accent;ctx.fillRect(0,H-pb,W*pr,pb)}
+      var txt=($("hooktext").value||"").trim();
+      if($("hookon").value!=="1"||!txt||rel<0||rel>3)return;
+      var al=Math.min(1,rel/0.25,(3-rel)/0.3),size=Math.round(W*0.07),fam=BR.font||getComputedStyle(document.body).fontFamily;
+      ctx.globalAlpha=Math.max(0,al);ctx.font="800 "+size+"px "+fam;ctx.textBaseline="middle";ctx.textAlign="left";
+      var key=txt+"|"+W+"|"+fam;if(key!==wrapKey){wrapKey=key;wrapLines=wrap(ctx,txt,W*0.78)}
+      var tw=0;wrapLines.forEach(function(l){tw=Math.max(tw,ctx.measureText(l).width)});
+      var pad=size*0.5,bw=tw+pad*2,bh=wrapLines.length*size*1.2+pad*1.2,by=H*0.13;
+      /* keep the hook clear of the captions (reads their settings only) */
+      if($("caps").value==="1"){var co=capOpts(),cy=H*co.y,ch=W*co.size*1.6;
+        var hit=function(y){return y<cy+ch&&y+bh>cy-ch};
+        if(hit(by)){by=H*0.62;if(hit(by))by=H*0.3}}
+      var bx=(W-bw)/2,sc=1;
+      if(mo){var e=Math.min(1,rel/0.35),c1=1.70158,c3=c1+1;sc=0.6+0.4*(1+c3*Math.pow(e-1,3)+c1*Math.pow(e-1,2))}
+      ctx.translate(W/2,by+bh/2);ctx.scale(sc,sc);ctx.translate(-W/2,-(by+bh/2));
+      ctx.fillStyle=BR.accent;box(ctx,bx,by,bw,bh,size*0.35);ctx.fill();
+      if(mo){ /* a white shine that sweeps across the box once */
+        var sw=Math.max(0,Math.min(1,(rel-0.2)/0.6));
+        if(sw>0&&sw<1){ctx.save();box(ctx,bx,by,bw,bh,size*0.35);ctx.clip();
+          var gx=bx-bw*0.3+sw*bw*1.6,g=ctx.createLinearGradient(gx,0,gx+bw*0.25,0);
+          g.addColorStop(0,"rgba(255,255,255,0)");g.addColorStop(0.5,"rgba(255,255,255,0.55)");g.addColorStop(1,"rgba(255,255,255,0)");
+          ctx.fillStyle=g;ctx.fillRect(bx,by,bw,bh);ctx.restore()}
+      }
+      ctx.fillStyle="#141a18";ctx.textAlign="center";
+      wrapLines.forEach(function(l,i){ctx.fillText(l,W/2,by+pad*0.6+size*0.6+i*size*1.2)});
+    }finally{ctx.restore()}
   };
-  /* recipes: a saved bundle of the export settings */
+
+  /* ---------- effects: punch-in zoom, emoji pop-ups, sound effects (planned from the transcript, no AI call) ---------- */
+  var EMO={love:"\u2764\uFE0F",heart:"\u2764\uFE0F",relationship:"\uD83D\uDC9E",money:"\uD83D\uDCB0",cash:"\uD83D\uDCB0",rich:"\uD83D\uDCB0",dollars:"\uD83D\uDCB0",fire:"\uD83D\uDD25",hot:"\uD83D\uDD25",funny:"\uD83D\uDE02",laugh:"\uD83D\uDE02",joke:"\uD83D\uDE02",crazy:"\uD83E\uDD2F",insane:"\uD83E\uDD2F",amazing:"\uD83E\uDD2F",wow:"\uD83E\uDD2F",win:"\uD83C\uDFC6",best:"\uD83C\uDFC6",success:"\uD83C\uDFC6",idea:"\uD83D\uDCA1",think:"\uD83E\uDDE0",brain:"\uD83E\uDDE0",mind:"\uD83E\uDDE0",time:"\u23F0",growth:"\uD83D\uDCC8",grow:"\uD83D\uDCC8",phone:"\uD83D\uDCF1",home:"\uD83C\uDFE0",food:"\uD83C\uDF54",music:"\uD83C\uDFB5",song:"\uD83C\uDFB5",fast:"\u26A1",danger:"\u26A0\uFE0F",warning:"\u26A0\uFE0F",stop:"\uD83D\uDED1",secret:"\uD83E\uDD2B",happy:"\uD83D\uDE0A",smile:"\uD83D\uDE0A",sad:"\uD83D\uDE22",cry:"\uD83D\uDE22",angry:"\uD83D\uDE21",work:"\uD83D\uDCBC",job:"\uD83D\uDCBC",pray:"\uD83D\uDE4F",strong:"\uD83D\uDCAA",look:"\uD83D\uDC40",watch:"\uD83D\uDC40",new:"\u2728",free:"\uD83C\uDD93",fail:"\u274C",wrong:"\u274C",right:"\u2705",true:"\u2705",yes:"\u2705",question:"\u2753",why:"\u2753"};
+  var plan={zooms:[],emojis:[],sfx:[]};
+  function norm(w){return String(w||"").toLowerCase().replace(/[^a-z]/g,"")}
+  window.fxPlan=function(list,a,b){
+    plan={zooms:[],emojis:[],sfx:[]};
+    var hookOn=$("hookon").value==="1"&&($("hooktext").value||"").trim(),zo=$("fxzoom").value==="1",em=$("fxemoji").value==="1",so=$("fxsound").value==="1";
+    var startAt=hookOn?3.2:1.0,lastZ=-9,lastE=-9,side=0;
+    list.forEach(function(w){
+      var t=w.s-a;if(t<startAt||t>b-a-0.8)return;
+      var n=norm(w.w);
+      if(em&&EMO[n]&&t-lastE>=3){lastE=t;plan.emojis.push({t:t,e:EMO[n],side:side++%2,done:false})}
+      var strong=/[.!?]$/.test(String(w.w))||n.length>=9||!!EMO[n];
+      if(zo&&strong&&t-lastZ>=3.5){lastZ=t;plan.zooms.push({t:t,done:false})}
+    });
+    if(so){
+      if(hookOn)plan.sfx.push({t:0.05,k:"whoosh",done:false});
+      plan.emojis.forEach(function(x){plan.sfx.push({t:x.t,k:"pop",done:false})});
+      plan.zooms.forEach(function(x){plan.sfx.push({t:x.t,k:"thud",done:false})});
+    }
+  };
+  window.zoomAt=function(rel){
+    if($("fxzoom").value!=="1")return 1;
+    for(var i=0;i<plan.zooms.length;i++){var z=plan.zooms[i],u=rel-z.t;
+      if(u>=0&&u<=1.2){var e=u<0.2?u/0.2:u<0.9?1:1-(u-0.9)/0.3;e=e*e*(3-2*e);return 1+0.11*Math.max(0,Math.min(1,e))}}
+    return 1;
+  };
+  function noiseBuf(ac,d){var n=Math.round(ac.sampleRate*d),b=ac.createBuffer(1,n,ac.sampleRate),c=b.getChannelData(0);for(var i=0;i<n;i++)c[i]=Math.random()*2-1;return b}
+  function play(k){
+    var A=window.fxAudio;if(!A)return;var ac=A.ac,d=A.dest,t=ac.currentTime,g=ac.createGain();g.connect(d);
+    if(k==="whoosh"){var s=ac.createBufferSource();s.buffer=noiseBuf(ac,0.4);var f=ac.createBiquadFilter();f.type="bandpass";f.Q.value=1.2;
+      f.frequency.setValueAtTime(400,t);f.frequency.exponentialRampToValueAtTime(3200,t+0.35);
+      g.gain.setValueAtTime(0.0001,t);g.gain.exponentialRampToValueAtTime(0.22,t+0.15);g.gain.exponentialRampToValueAtTime(0.0001,t+0.4);
+      s.connect(f);f.connect(g);s.start(t);s.stop(t+0.42)}
+    else{var o=ac.createOscillator();o.type="sine";
+      if(k==="pop"){o.frequency.setValueAtTime(700,t);o.frequency.exponentialRampToValueAtTime(220,t+0.12);g.gain.setValueAtTime(0.28,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.14);o.connect(g);o.start(t);o.stop(t+0.16)}
+      else{o.frequency.setValueAtTime(130,t);o.frequency.exponentialRampToValueAtTime(45,t+0.22);g.gain.setValueAtTime(0.35,t);g.gain.exponentialRampToValueAtTime(0.0001,t+0.25);o.connect(g);o.start(t);o.stop(t+0.27)}}
+  }
+  function fireSfx(rel){
+    plan.sfx.forEach(function(x){if(!x.done&&rel>=x.t){x.done=true;if(rel-x.t<0.5){try{play(x.k)}catch(e){}}}});
+  }
+  function drawEmoji(ctx,W,H,rel){
+    var cap=$("caps").value==="1"?capOpts().y:-1;
+    plan.emojis.forEach(function(x){
+      var u=rel-x.t;if(u<0||u>1.2)return;
+      var e=Math.min(1,u/0.3),c1=1.70158,c3=c1+1,sc=0.3+0.7*(1+c3*Math.pow(e-1,3)+c1*Math.pow(e-1,2));
+      var al=u>0.9?1-(u-0.9)/0.3:1,size=Math.round(W*0.2),px=x.side?W*0.78:W*0.22,py=H*0.42;
+      if(cap>=0&&Math.abs(cap-py/H)<0.14)py=H*0.27;
+      ctx.save();ctx.globalAlpha=Math.max(0,al);ctx.translate(px,py);ctx.rotate((x.side?1:-1)*0.18*(1-e));ctx.scale(sc,sc);
+      ctx.font=size+"px 'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif";ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.shadowColor="rgba(0,0,0,0.35)";ctx.shadowBlur=size*0.12;ctx.fillText(x.e,0,0);ctx.restore();
+    });
+  }
   function recipes(){return ls(RK)||{}}
   function fillList(sel){var r=recipes(),l=$("rclist");l.textContent="";
     Object.keys(r).forEach(function(n){var o=document.createElement("option");o.value=n;o.textContent=n;l.appendChild(o)});
     if(sel)l.value=sel}
-  if(!localStorage.getItem(RK)){lsSet(RK,{"Social edits":{fit:"auto",caps:"1",capstyle:"pill",capsize:"m",cappos:"low",hookon:"1",motion:"1",brcol:$("brcol").value,brfont:$("brfont").value}})}
+  var SOC={fit:"auto",hookon:"1",motion:"1",fxzoom:"1",fxemoji:"1",fxsound:"1"};
+  (function(){var r=recipes();if(!localStorage.getItem(RK)){r={};r["Social edits"]=SOC;lsSet(RK,r)}
+    else if(r["Social edits"]&&r["Social edits"].fxzoom===undefined){r["Social edits"]=SOC;lsSet(RK,r)}})();
   fillList();
   $("rcsave").addEventListener("click",function(){
     var n=$("rcname").value.trim();if(!n){note("Type a name for the recipe first.",true);return}
@@ -1083,7 +1150,7 @@ $("goE").addEventListener("click",async function(){
     await new Promise(function(res,rej){v.onloadedmetadata=res;v.onerror=function(){rej(new Error("load"))}});
     var AC=window.AudioContext||window.webkitAudioContext;ac=new AC();
     if(ac.state==="suspended")await ac.resume();
-    var dest=ac.createMediaStreamDestination();ac.createMediaElementSource(v).connect(dest);
+    var dest=ac.createMediaStreamDestination();ac.createMediaElementSource(v).connect(dest);window.fxAudio={ac:ac,dest:dest};
     var stream=new MediaStream(cv.captureStream(30).getVideoTracks().concat(dest.stream.getAudioTracks()));
     rec=new MediaRecorder(stream,{mimeType:mime,videoBitsPerSecond:4000000});
     rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data)};
@@ -1105,6 +1172,7 @@ $("goE").addEventListener("click",async function(){
       }
     }
     await new Promise(function(res){v.onseeked=res;v.currentTime=Math.max(a,0.001)});
+    try{window.fxPlan(list,a,b)}catch(e){}
     rec.start(250);await v.play();
     recording=true;document.addEventListener("visibilitychange",onVis);if(document.hidden)onVis();
     msg($("estatus"),"Recording clip...");
@@ -1113,10 +1181,12 @@ $("goE").addEventListener("click",async function(){
       if(done)return;
       var t=v.currentTime;
       if(cancel||t>=b||v.ended){if(rec.state!=="inactive")rec.stop();return}
-      ctx.setTransform(1,0,0,1,0,0);ctx.globalAlpha=1;ctx.textAlign="left";
       ctx.fillStyle="#000";ctx.fillRect(0,0,W,H);
+      var z=1;try{z=window.zoomAt(t-a)||1}catch(e){}
+      if(z!==1){ctx.save();ctx.translate(W/2,H/2);ctx.scale(z,z);ctx.translate(-W/2,-H/2)}
       if(contain){var k=Math.min(W/vw,H/vh),dw=vw*k,dh=vh*k;ctx.drawImage(v,(W-dw)/2,(H-dh)/2,dw,dh)}
       else{var sw=vh*9/16,sx=plan?AutoLogic.leftAt(plan,t)*vw:(vw-sw)/2;sx=Math.max(0,Math.min(vw-sw,sx));ctx.drawImage(v,sx,0,sw,vh,0,0,W,H)}
+      if(z!==1)ctx.restore();
       if(caps)drawCaps(ctx,W,H,t,list,capo);
       try{window.drawExtras(ctx,W,H,t-a,b-a)}catch(e){}
       $("ebar").style.width=Math.min(100,(t-a)/(b-a)*100).toFixed(0)+"%";
